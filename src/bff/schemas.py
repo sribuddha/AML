@@ -86,6 +86,10 @@ class RuleUpdate(BaseModel):
     rules_json: list[dict[str, Any]]
 
 
+class RuleStatusUpdate(BaseModel):
+    status: str
+
+
 class RuleResponse(BaseModel):
     id: str
     name: str
@@ -125,5 +129,90 @@ class SARResponse(BaseModel):
 
 
 class ReviewRequest(BaseModel):
-    action: str  # "approve" | "reject"
+    action: str
     notes: str | None = None
+
+
+class TransactionRowResponse(BaseModel):
+    id: str
+    source_txn_id: str
+    account_id: str
+    account_name: str | None = None
+    customer_id: str
+    amount: float | None = None
+    counterparty: str | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    date: str | None = None
+
+
+class CustomerSummaryResponse(BaseModel):
+    customer_id: str
+    first_name: str
+    last_name: str
+    city: str | None = None
+    state: str | None = None
+
+
+class AccountDetailResponse(BaseModel):
+    account_id: str
+    name: str | None = None
+    bank: str | None = None
+    type: str | None = None
+    date_opened: str | None = None
+
+
+class CustomerDetailResponse(BaseModel):
+    customer_id: str
+    first_name: str
+    last_name: str
+    address_line: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip: str | None = None
+    accounts: list[AccountDetailResponse] = []
+
+
+class AccountResponse(BaseModel):
+    account_id: str
+    name: str | None = None
+    bank: str | None = None
+    type: str | None = None
+    date_opened: str | None = None
+    customer_id: str
+
+
+class PendingSARResponse(BaseModel):
+    sar_id: str
+    transaction_id: str
+    upload_id: str
+    source_txn_id: str | None = None
+    account_id: str | None = None
+    customer_id: str | None = None
+    amount: float | None = None
+    counterparty: str | None = None
+    city: str | None = None
+    state: str | None = None
+    country: str | None = None
+    date: str | None = None
+    flag_details: dict | None = None
+    risk_level: str | None = None
+    triage_reasoning: str | None = None
+    enrichment: dict | None = None
+    rule_name: str | None = None
+    rule_description: str | None = None
+    sar_content: str
+    sar_status: str
+    created_at: str | None = None
+
+
+class GenerateStep(BaseModel):
+    type: str
+    count: int = 100
+    bad_rate: int = 0
+
+class GenerateRequest(BaseModel):
+    steps: list[GenerateStep] = [GenerateStep(type="upload")]
+    shuffle: bool = True
+    date: str | None = None

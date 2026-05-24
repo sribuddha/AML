@@ -182,6 +182,12 @@ python -m pytest tests/unit/file/test_service.py::test_all_valid_rows_accepted -
 
 # Run a specific domain (e.g., aml, bff, file)
 python -m pytest tests/unit/aml/ tests/e2e/aml/ -v
+
+# Playwright UI E2E tests (requires seeded DB + both servers running)
+# Alternatively, Playwright config auto-starts servers via webServer
+python -m scripts.seed_db --force  # ensure DB has seed data
+cd ui
+npx playwright test
 ```
 
 ## Retry Upload

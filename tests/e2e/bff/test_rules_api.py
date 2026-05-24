@@ -66,3 +66,28 @@ class TestRulesAPI:
     async def test_delete_rule_returns_404(self, client):
         resp = await client.delete(f"/api/rules/{uuid.uuid4()}")
         assert resp.status_code == 404
+
+    async def test_patch_status_returns_404(self, client):
+        resp = await client.patch(f"/api/rules/{uuid.uuid4()}/status", json={"status": "active"})
+        assert resp.status_code == 404
+
+    async def test_patch_status_returns_422_for_invalid_status(self, client, seeded_rules):
+        resp = await client.patch(f"/api/rules/{seeded_rules[0].id}/status", json={"status": "bogus"})
+        assert resp.status_code == 422
+
+    async def test_patch_status_toggles_active_to_inactive(self, client, seeded_rules):
+        rule = seeded_rules[0]
+        resp = await client.patch(f"/api/rules/{rule.id}/status", json={"status": "inactive"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "inactive"
+        assert data["id"] == rule.id
+
+    async def test_patch_status_toggles_inactive_to_active(self, client, seeded_rules):
+        rule = seeded_rules[0]
+        await client.patch(f"/api/rules/{rule.id}/status", json={"status": "inactive"})
+        resp = await client.patch(f"/api/rules/{rule.id}/status", json={"status": "active"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["status"] == "active"
+        assert data["id"] == rule.id

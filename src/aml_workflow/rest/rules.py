@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.aml_workflow.models.rule import Rule
 from src.bff.database import get_db
-from src.bff.schemas import PaginatedResponse, RuleCreate, RuleResponse, RuleUpdate
+from src.bff.schemas import PaginatedResponse, RuleCreate, RuleResponse, RuleStatusUpdate, RuleUpdate
 
 router = APIRouter()
 
@@ -107,6 +107,20 @@ async def update_rule(rule_id: str, body: RuleUpdate, db: AsyncSession = Depends
     await db.commit()
     await db.refresh(new_rule)
     return _rule_to_response(new_rule)
+
+
+@router.patch("/api/rules/{rule_id}/status")
+async def update_rule_status(rule_id: str, body: RuleStatusUpdate, db: AsyncSession = Depends(get_db)):
+    if body.status not in ("active", "inactive"):
+        raise HTTPException(status_code=422, detail="Status must be 'active' or 'inactive'")
+    existing = await db.get(Rule, rule_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    existing.status = body.status
+    existing.updated_at = datetime.now(UTC).isoformat()
+    await db.commit()
+    await db.refresh(existing)
+    return _rule_to_response(existing)
 
 
 @router.delete("/api/rules/{rule_id}", status_code=204)

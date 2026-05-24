@@ -192,24 +192,47 @@
 
 ## What's Left
 
-### Minor coverage gaps (98%)
+### Minor coverage gaps (92%)
+- `rules.py` at 85% (12 new lines: PATCH endpoint + default status filter)
 - `llm.py` at 97% (lines 55-56, 63, 70, 77: provider detection branches)
 - `read.py` at 92% (lines 135, 148-149, 154-155: rejected record JSON parsing errors)
 - `reprocess.py` at 93% (lines 43-44: heartbeat `ValueError/TypeError`, 51: unknown status)
 - `graph.py` at 96% (9 lines across various error paths)
 - `service.py` at 98% (5 lines: NaN cleanup branches)
-- Target: ≥ 90% per module (already met at 98% overall)
+- Target: ≥ 90% per module (already met at 92% overall)
+
+### UI Improvements (✅ Done)
+- **Full-width layout**: Removed `max-w-7xl` constraint from main content area — AML Monitor now spans the full page
+- **Homepage**: 5-card dashboard at `/` (Compliance, Operations, Rules, Customers, Transactions) replacing the redirect to `/transactions`
+- **AML Monitor title**: Sidebar title links to `/` for easy navigation back to dashboard
+- **TestPage unchecked state**: Removed `opacity-50` / muted text styling; unchecked rows use dashed borders + "tick to add" hint; count inputs stay visible and editable for pre-configuration
+
+### Vitest + Unit Tests (✅ Done)
+- **176 tests across 15 files** — all passing
+- **Coverage: 87.64% statements, 92.05% lines** (exceeds 80% target)
+- Covers all 7 pages + all 5 components + API client
+- Commands: `npm test`, `npm run test:watch`, `npm run test:coverage`
+- Run from `ui/` directory
+
+### Playwright E2E UI Tests (new)
+- 7 spec files in `tests/e2e/ui/` covering Compliance, Operations, Rules, Transactions, Customers, Test Generator, Layout
+- Run from `ui/` with `npx playwright test`
+- Config with `webServer` for auto-starting backend + Vite dev server
+- Global setup seeds DB with `scripts.seed_db --force`
 
 ### React Frontend (after Phase 6)
 - Vite + TypeScript scaffold
 - Upload page (drag-and-drop CSV)
 - Transaction list + validation dashboard
 
+### Rule Status Toggle (✅ Done)
+- `PATCH /api/rules/{rule_id}/status` endpoint — in-place toggle without versioning
+- `RuleStatusUpdate` Pydantic schema (`status: "active" | "inactive"`)
+- Frontend `RulesPage.tsx`: Deactivate/Activate toggle button per row, status dropdown in edit form, removed "Delete" action
+- E2E tests: 3 new backend tests (404, 422 invalid, active→inactive→active toggle)
+- Playwright E2E UI tests: 7 spec files covering all pages + sidebar navigation
+
 ### Phase 8 — Raw LLM Response Capture (in progress)
-- Add `raw_llm_response TEXT` column to `validation_result` and `sar` tables
-- Capture raw response text from Gemini/OpenAI triage and SAR calls
-- Persist via Alembic migration + graph.py update
-- Internal debug data — not exposed via BFF API
 
 ### Phase 7 — Eval Harness + Improvements (in progress)
 - Calibration check (confidence vs actual accuracy across deciles)
