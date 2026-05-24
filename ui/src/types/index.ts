@@ -56,6 +56,8 @@ export interface UploadSummary {
   accepted_count: number | null;
   failed_count: number;
   uploaded_at: string | null;
+  eval_file: string | null;
+  pending_sar_count: number;
 }
 
 export interface PendingSAR {
@@ -65,6 +67,8 @@ export interface PendingSAR {
   source_txn_id: string | null;
   account_id: string | null;
   customer_id: string | null;
+  customer_first_name: string | null;
+  customer_last_name: string | null;
   amount: number | null;
   counterparty: string | null;
   city: string | null;
@@ -120,4 +124,58 @@ export interface GenerateRequest {
 
 export interface GenerateResponse {
   download_url: string;
+  filename: string;
+  eval_url: string | null;
+}
+
+export interface CsvPreview {
+  fieldnames: string[];
+  rows: Record<string, string>[];
+}
+
+export interface EvalEntry {
+  source_txn_id: string;
+  scenario: string;
+  expected_escalate: boolean;
+  ground_truth: string;
+  reason_hint: string;
+}
+
+export interface PatternMetrics {
+  pattern: string;
+  total: number;
+  flagged: number;
+  precision: number;
+  recall: number;
+  f1: number;
+}
+
+export interface HallucinationResult {
+  sar_id: string;
+  transaction_id: string;
+  hallucinated_facts: string[];
+  passed: boolean;
+}
+
+export interface CompletenessResult {
+  sar_id: string;
+  transaction_id: string;
+  covered_rules: string[];
+  missed_rules: string[];
+  score: number;
+}
+
+export interface EvalReport {
+  upload_id: string;
+  total_transactions: number;
+  total_anomalous: number;
+  total_flagged: number;
+  pattern_metrics: PatternMetrics[];
+  hallucination_results: HallucinationResult[];
+  completeness_results: CompletenessResult[];
+  overall_precision: number;
+  overall_recall: number;
+  overall_f1: number;
+  hallucination_free_rate: number;
+  avg_completeness: number;
 }

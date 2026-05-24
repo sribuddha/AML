@@ -142,4 +142,31 @@ describe("CustomersPage", () => {
       }));
     });
   });
+
+  it("navigates to customer detail on ID click", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("CUST001")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("CUST001"));
+  });
+
+  it("shows pagination when more than 25 customers", async () => {
+    const manyCustomers: CustomerSummary[] = Array.from({ length: 30 }, (_, i) => ({
+      customer_id: `CUST${String(i + 1).padStart(3, "0")}`,
+      first_name: "User",
+      last_name: `${i + 1}`,
+      city: "City",
+      state: "ST",
+    }));
+    mockGet.mockResolvedValue({ page: 1, per_page: 25, total: 30, items: manyCustomers.slice(0, 25) });
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByText("CUST025")).toBeInTheDocument();
+    });
+    expect(screen.getByText("30 results")).toBeInTheDocument();
+    const pageTwo = screen.getAllByText("2").filter(el => el.tagName === "BUTTON");
+    expect(pageTwo.length).toBe(1);
+    fireEvent.click(screen.getByText("Next →"));
+  });
 });

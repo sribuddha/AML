@@ -36,9 +36,15 @@ export default function Layout() {
   const location = useLocation();
 
   useEffect(() => {
-    api.get<PaginatedResponse<unknown>>("/api/sar", { status: "pending_review", per_page: 1 })
-      .then((data) => setPendingCount(data.total))
-      .catch(() => {});
+    const load = () => {
+      api.get<PaginatedResponse<unknown>>("/api/sar", { status: "pending_review", per_page: 1 })
+        .then((data) => setPendingCount(data.total))
+        .catch(() => {});
+    };
+    load();
+    const handler = () => load();
+    window.addEventListener("sar-reviewed", handler);
+    return () => window.removeEventListener("sar-reviewed", handler);
   }, [location.pathname]);
 
   return (

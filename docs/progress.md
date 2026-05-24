@@ -208,8 +208,8 @@
 - **TestPage unchecked state**: Removed `opacity-50` / muted text styling; unchecked rows use dashed borders + "tick to add" hint; count inputs stay visible and editable for pre-configuration
 
 ### Vitest + Unit Tests (✅ Done)
-- **176 tests across 15 files** — all passing
-- **Coverage: 87.64% statements, 92.05% lines** (exceeds 80% target)
+- **266 tests across 16 files** — all passing
+- **Coverage: 93.71% statements, 96.27% lines** (component/page coverage)
 - Covers all 7 pages + all 5 components + API client
 - Commands: `npm test`, `npm run test:watch`, `npm run test:coverage`
 - Run from `ui/` directory
@@ -231,6 +231,31 @@
 - Frontend `RulesPage.tsx`: Deactivate/Activate toggle button per row, status dropdown in edit form, removed "Delete" action
 - E2E tests: 3 new backend tests (404, 422 invalid, active→inactive→active toggle)
 - Playwright E2E UI tests: 7 spec files covering all pages + sidebar navigation
+
+### Eval Integration (✅ Done)
+- **TestPage preview**: After generation, two tabs show CSV content (read-only table) and `.eval` ground truth data side-by-side in scrollable containers
+- **Upload from work**: `POST /api/uploads/from-work/{filename}` processes a server-side CSV (from `work/`) and associates any `.eval` sidecar file with the upload record
+- **Operations Eval button**: "Eval" button on completed uploads with `eval_file` → calls `POST /api/uploads/{upload_id}/eval` and opens a modal showing:
+  - Summary cards (transactions, anomalous, flagged)
+  - Overall metrics (precision, recall, F1)
+  - Hallucination-free rate and avg completeness
+  - Per-pattern metrics table with color-coded scores
+  - Hallucination issues list (failed checks with hallucinated facts)
+  - Completeness issues list (missed rules per SAR)
+- **New endpoints**:
+  - `GET /api/generate/eval/{filename}` — serves `.eval` JSONL or `.manifest.json` as JSON
+  - `GET /api/generate/preview/{filename}` — returns first N CSV rows as JSON for table preview
+  - `POST /api/uploads/from-work/{filename}` — upload CSV from server-side `work/` directory
+  - `POST /api/uploads/{upload_id}/eval` — run eval on processed upload, returns `EvalReportResponse`
+- **New DB column**: `uploaded_files.eval_file` (String, nullable) — stores path to `.eval` sidecar
+- **Migration**: `014_eval_file.py` (adds column, no data migration needed)
+- **Schema types**: `GenerateResponse` extended with `filename` and `eval_url`; new `EvalReportResponse`, `EvalEntry`, `PatternMetricsResponse`, `HallucinationResultResponse`, `CompletenessResultResponse`
+- **Frontend types**: `GenerateResponse` updated; new `CsvPreview`, `EvalEntry`, `EvalReport`, `PatternMetrics`, `HallucinationResult`, `CompletenessResult`, `UploadSummary.eval_file`
+
+### Customer Name Persistence + "View all" Link (✅ Done)
+- **Customer name persists**: `customerName` state in CompliancePage captured on first SAR load, survives after `sars` cleared by Accept All / Dismiss All (no longer falls back to raw ID `CUST005`).
+- **"View all pending reviews"**: Shown as a link below the green checkmark in completed state when `customerUrlId` is set — navigates to `/compliance` (clears customer filter).
+- Tests: all 19 CompliancePage tests pass, build clean.
 
 ### Phase 8 — Raw LLM Response Capture (in progress)
 

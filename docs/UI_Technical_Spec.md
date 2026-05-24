@@ -109,27 +109,36 @@ customer_id (link → detail), first_name, last_name, city, state
 
 ### 2.5 CompliancePage
 
-**Pending SAR review cards.** Each card shows:
+**Flat list of pending SARs with per-row checkboxes and batch review.**
 
 | Section | Content |
 |---------|---------|
-| Transaction header | source_txn_id, amount ($), counterparty, location, date, rule_name, risk_level |
+| Transaction header | source_txn_id, risk pill badge (colored), amount ($), counterparty, location, date, rule_name |
 | Rules triggered | Rule name list (from flag_details) |
 | Enriched context (if available) | 30d stats (count, avg), structuring count, velocity z-score (red-highlighted if > 2), dormancy days, account type |
 | SAR narrative | Full content text |
 | Actions | Dismiss / Confirm buttons (disabled during review, show "..." while in progress) |
 
+**Risk filter pills:** Row of filter pills above the list — **All | High | Medium | Low** — filters displayed SARs by `risk_level`. Pending count updates to show `N pending (M high)` when a filter is active.
+
+**Batch review toolbar:**
+- **Select All** checkbox: selects/deselects all visible (filtered) SARs
+- **Accept All** / **Dismiss All** buttons: disabled when nothing selected, show "..." while processing
+- Calls `POST /api/sar/batch-review` with `{ sar_ids: [...], action }`
+
 **Behavior:**
 - Fetches `GET /api/sar/pending?upload_id=` (optional filter from URL param)
-- After Confirm/Dismiss, waits **2 seconds** then refetches
+- After Confirm/Dismiss, waits **1 second** then refetches
 - While reviewing, buttons show "..." and are disabled
 - If all SARs resolved, shows completion message ("You are all up to date.")
 - On 404 from API, treats as "all resolved" (no pending SARs)
-- Sidebar Compliance nav item shows pending count badge
+- After any review (single or batch), dispatches `window.dispatchEvent(new CustomEvent("sar-reviewed"))` for sidebar badge update
 - Loading state: 3 skeleton cards with pulsing bars
 - Error state: inline banner with Retry button
+- Customer name persisted in separate `customerName` state to survive after SARs cleared by Accept All / Dismiss All
+- When completed while filtered by customer (`?customer_id=X`): shows "View all pending reviews" link → `/compliance`
 
-**States:** loading, error, empty ("all up to date"), populated with ReviewCards
+**States:** loading, error, empty ("all up to date", with optional "View all pending reviews" link when customer-filtered), populated with checkboxes + ReviewCards
 
 ### 2.6 OperationsPage
 
@@ -147,7 +156,7 @@ Two tabs:
 - Filters: upload_id (text), from_date / to_date (date range on `uploaded_at`)
 - Search button triggers API fetch
 - Unsearched state shows hint: "Enter an Upload ID, select a date range, and click Search"
-- Results table: upload_id (link → Compliance if `pending_human`), filename, status (color badge), total_rows, accepted_count, failed_count, uploaded_at
+- Results table: upload_id (link → Compliance if `pending_human`), filename, status (color badge), total_rows, accepted_count, failed_count, uploaded_at, Eval button (shown only when `eval_file` is present and status is `complete`)
 
 ### 2.7 RulesPage
 
@@ -182,11 +191,16 @@ Two tabs:
 - Total rows counter at bottom (sum of all enabled generators' counts)
 - Generate button disabled when 0 total rows
 - Spinner "Generating..." while in progress
-- On success: download link + "Upload to Operations" button
+- On success: 2-tab preview area (CSV File / Eval Data) in scrollable tables, plus Download CSV and Upload to Pipeline buttons
+- Upload to Pipeline calls `POST /api/uploads/from-work/{filename}`, then navigates to Operations
 - On failure: error banner with message
 - Warning banner: "Development-only tool"
 
-**API call:** `POST /api/generate` with body `{steps: [{type, count, bad_rate}], shuffle, date}`
+**API calls:**
+- `POST /api/generate` with body `{steps: [{type, count, bad_rate}], shuffle, date}` → returns `{download_url, filename, eval_url}`
+- `GET /api/generate/preview/{filename}` → returns first 50 CSV rows as JSON `{fieldnames, rows}`
+- `GET /api/generate/eval/{filename}` → returns `.eval` JSONL entries or `.manifest.json` as JSON array
+- `POST /api/uploads/from-work/{filename}` → uploads server-side CSV through normal pipeline
 
 ---
 
@@ -221,6 +235,8 @@ App (BrowserRouter)
         │   ├── CustomerInfoCard
         │   └── AccountsTable (raw HTML table)
         ├── CompliancePage
+        │   ├── RiskFilterPills (All | High | Medium | Low)
+        │   ├── BatchToolbar (Select All + Accept All / Dismiss All)
         │   └── ReviewCard[]
         │       ├── Collapsed summary
         │       └── Expanded detail
@@ -243,7 +259,11 @@ App (BrowserRouter)
         └── TestPage
             ├── GeneratorCheckboxList (4 types)
             ├── Options (shuffle, date)
-            └── ResultCard (success/error)
+            └── ResultCard
+                ├── TabBar (CSV File | Eval Data)
+                ├── CSV preview table (scrollable)
+                ├── Eval preview table (scrollable)
+                └── Action buttons (Download CSV, Upload to Pipeline)
 ```
 
 ---
@@ -259,7 +279,8 @@ App (BrowserRouter)
 | GET | `/api/customers/{customer_id}` | Customer detail | path: customer_id | CustomerDetail |
 | GET | `/api/accounts/{account_id}` | Account lookup | path: account_id | AccountDetail |
 | GET | `/api/sar/pending` | Pending SARs | query: upload_id (optional), page, per_page | PaginatedResponse of PendingSAR |
-| PATCH | `/api/sar/{sar_id}/review` | Review SAR | body: `{action, notes}` | Updated SAR |
+| PATCH | `/api/sar/{sar_id}/review` | Review single SAR | body: `{action, notes}` | Updated SAR |
+| POST | `/api/sar/batch-review` | Batch review multiple SARs | body: `{sar_ids: string[], action}` | `{reviewed: count}` |
 | POST | `/api/uploads` | Upload CSV | multipart form: file | `{total_rows, accepted_count, failed_count}` |
 | GET | `/api/uploads/search` | Search uploads | query: upload_id, status, from_date, to_date, page, per_page | PaginatedResponse of UploadSummary |
 | GET | `/api/rules` | List rules | query: type, status, name, page, per_page | PaginatedResponse of RuleResponse |
@@ -267,8 +288,12 @@ App (BrowserRouter)
 | PUT | `/api/rules/{rule_id}` | Update rule | path + body: RuleCreate | RuleResponse |
 | DELETE | `/api/rules/{rule_id}` | Delete rule | path | 204 |
 | PATCH | `/api/rules/{rule_id}/status` | Toggle status | body: `{status: "active"|"inactive"}` | RuleResponse |
-| POST | `/api/generate` | Generate test data | body: `{steps: [{type, count, bad_rate}], shuffle, date}` | `{download_url}` |
+| POST | `/api/generate` | Generate test data | body: `{steps: [{type, count, bad_rate}], shuffle, date}` | `{download_url, filename, eval_url}` |
 | GET | `/api/generate/download/{filename}` | Download generated file | path: filename | File stream (Content-Disposition attachment) |
+| GET | `/api/generate/preview/{filename}` | Preview CSV rows | path: filename, query: limit | `{fieldnames, rows}` |
+| GET | `/api/generate/eval/{filename}` | Get eval ground truth | path: filename | `EvalEntry[]` (JSON array) |
+| POST | `/api/uploads/from-work/{filename}` | Upload CSV from server-side work/ | path: filename | `{total_rows, accepted_count, failed_count}` |
+| POST | `/api/uploads/{upload_id}/eval` | Evaluate processed upload | path: upload_id | `EvalReportResponse` |
 | GET | `/api/sar` | List SARs | query: status, per_page | PaginatedResponse (used by sidebar badge) |
 
 ### 4.2 PaginatedResponse Shape
@@ -316,14 +341,26 @@ User opens Compliance page
     → GET /api/sar/pending
     → BFF joins SAR + Transaction + ValidationResult + EnrichmentSnapshot + Rule
     → Returns list of pending SARs with all context
-    → UI renders ReviewCards (collapsed)
-    → User expands card → sees full SAR + enrichment + rules triggered
-    → User clicks Confirm/Dismiss
+    → UI renders RiskFilterPills + BatchToolbar + ReviewCards (collapsed)
+    → User filters by risk level (All/High/Medium/Low)
+    → User selects individual SARs or uses Select All
+    → User clicks Confirm/Dismiss (single) OR Accept All/Dismiss All (batch)
+
+SINGLE REVIEW:
     → PATCH /api/sar/{sar_id}/review {action, notes}
-    → Wait 2 seconds
+    → Wait 1 second
     → Refetch pending list
+
+BATCH REVIEW:
+    → POST /api/sar/batch-review {sar_ids: [...], action}
+    → Wait 1 second
+    → Refetch pending list
+
+After both paths:
+    → Dispatch window CustomEvent("sar-reviewed")
+    → Clear selection
     → If empty, show completion status ("You are all up to date.")
-    → Sidebar badge updates
+    → Sidebar badge updates via custom event listener
 ```
 
 ### 5.4 Rules CRUD Flow
@@ -362,12 +399,37 @@ STATUS TOGGLE:
 ```
 User checks desired generators, sets counts, bad_rows, shuffle, date
     → POST /api/generate {steps: [{type, count, bad_rate}], shuffle, date}
-    → BFF calls generate script functions directly (same DB session)
-    → Script writes CSV to work/{uuid}_{type}.csv
-    → Returns {download_url: "/api/generate/download/{filename}"}
-    → UI shows success card with:
-        - Download CSV button → api.download(download_url)
-        - Upload to Operations button → navigate to /operations
+    → BFF calls generate script functions directly
+    → Script writes CSV to work/{uuid}_{type}.csv + possibly .eval sidecar
+    → Returns {download_url, filename, eval_url}
+    → UI fetches CSV preview (GET /api/generate/preview/{filename})
+    → UI fetches eval entries (GET /api/generate/eval/{filename}) if eval_url exists
+    → Shows two tabs: CSV File (read-only table) | Eval Data (JSONL entries as table)
+    → User reviews data in scrollable tables
+    → User clicks "Upload to Pipeline"
+    → POST /api/uploads/from-work/{filename}
+    → BFF reads CSV from work/, processes through standard pipeline
+    → .eval sidecar path stored in uploaded_files.eval_file
+    → Pipeline triggers (run_validation)
+    → UI navigates to /operations
+```
+
+### 5.6 Operations Eval Flow
+
+```
+User searches uploads → sees DataTable with Eval column
+    → Clicks "Eval" on a completed upload with eval_file present
+    → POST /api/uploads/{upload_id}/eval
+    → BFF reads .eval file, queries DB (Transaction, ValidationResult, SAR)
+    → Computes pattern metrics, hallucination, completeness
+    → Returns EvalReportResponse
+    → UI opens modal showing:
+        - Summary cards (transactions, anomalous, flagged)
+        - Overall metrics (precision, recall, F1)
+        - Hallucination-free rate + avg completeness
+        - Per-pattern metrics table (color-coded by score)
+        - Hallucination issues (red cards per failed SAR)
+        - Completeness issues (amber cards per incomplete SAR)
 ```
 
 ---
@@ -376,7 +438,7 @@ User checks desired generators, sets counts, bad_rows, shuffle, date
 
 ### 6.1 Shared Components
 
-**Layout** — Fixed sidebar (64px icons + labels) + scrollable full-width content area. Sidebar title links to `/` (homepage). Active nav item highlighted with blue background + left border indicator. Operations section is collapsible with Upload and Rules sub-navigation. Bottom section has API Docs external link. SAR pending count badge shown on Compliance nav item (fetched on mount and route change via `GET /api/sar?status=pending_review&per_page=1`). Shows `99+` when count > 99.
+**Layout** — Fixed sidebar (64px icons + labels) + scrollable full-width content area. Sidebar title links to `/` (homepage). Active nav item highlighted with blue background + left border indicator. Operations section is collapsible with Upload and Rules sub-navigation. Bottom section has API Docs external link. SAR pending count badge shown on Compliance nav item (fetched on mount via `GET /api/sar?status=pending_review&per_page=1`; updated in real-time by listening for `window "sar-reviewed"` custom event dispatched from CompliancePage). Shows `99+` when count > 99.
 
 **DataTable** — Generic table component:
 - Column configuration (key, label, sortable, render callback, className)
@@ -403,7 +465,7 @@ User checks desired generators, sets counts, bad_rows, shuffle, date
 **FileUploader** — Drag-and-drop zone with dashed border, click to browse. Shows filename after selection. Upload button appears after selection. Upload progress spinner. Drag-over highlights blue border. dragLeave restores default border.
 
 **ReviewCard** — SAR review card:
-- Collapsed: transaction summary (source_txn_id, amount, counterparty, location, date) + rule_name + risk_level + StatusBadge + expand arrow
+- Collapsed: transaction summary (source_txn_id, amount, counterparty, location, date) + risk pill badge (colored: red/amber/green) + StatusBadge + expand arrow
 - Expanded: Rules Triggered (from flag_details), Enriched Context (grid of stat cards), SAR Narrative
 - Expand/collapse toggle on header click
 - Action buttons: Dismiss (slate) / Confirm (blue), disabled with "..." text while `reviewing=true`
@@ -471,7 +533,7 @@ No external state library. Each page manages its own state with React hooks:
 
 **Framework:** Vitest v4 + jsdom + @testing-library/react
 
-**Test files (15 files, 181 tests):**
+**Test files (15 files, 196 tests):**
 
 ```
 ui/src/
@@ -486,12 +548,12 @@ ui/src/
 │   └── StatusBadge.test.tsx   — Colors for all statuses, underscore replacement (12 tests)
 └── pages/
     ├── HomePage.test.tsx       — Cards, links, descriptions (5 tests)
-    ├── CompliancePage.test.tsx — Loading, SAR list, empty, error, review flow (12 tests)
+    ├── CompliancePage.test.tsx — Loading, SAR list, empty, error, review, batch select, batch review (16 tests)
     ├── CustomerDetailPage.test.tsx — Loading, error, not-found, info+accounts (9 tests)
     ├── CustomersPage.test.tsx  — Search, DataTable, error/empty/retry (13 tests)
     ├── OperationsPage.test.tsx — Tabs, upload result, search, error/empty (17 tests)
     ├── RulesPage.test.tsx      — CRUD form, status toggle, filter, error (16 tests)
-    ├── TestPage.test.tsx       — Checkboxes, counts, generate, error/success (17 tests)
+    ├── TestPage.test.tsx       — Checkboxes, counts, generate, preview tabs, upload (18 tests)
     └── TransactionsPage.test.tsx — Filters, DataTable, search, tags, page change (18 tests)
 ```
 

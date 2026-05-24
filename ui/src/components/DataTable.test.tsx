@@ -148,4 +148,26 @@ describe("DataTable", () => {
     expect(rows[2]).toHaveTextContent("100");
     expect(rows[3]).toHaveTextContent("200");
   });
+
+  it("sorts null values last", () => {
+    interface NullItem { id: string; name: string | null; }
+    const cols: Column<NullItem>[] = [{ key: "name", label: "Name" }];
+    const items: NullItem[] = [
+      { id: "1", name: "Charlie" },
+      { id: "2", name: null },
+      { id: "3", name: "Alice" },
+    ];
+    render(<DataTable columns={cols} data={items} />);
+    fireEvent.click(screen.getByText("Name"));
+    const rows = screen.getAllByRole("row");
+    expect(rows[3]).toHaveTextContent("-");
+  });
+
+  it("renders dash when cell value is null", () => {
+    interface NullValItem { id: string; val: string | null; }
+    const cols: Column<NullValItem>[] = [{ key: "val", label: "Val" }];
+    const items: NullValItem[] = [{ id: "1", val: null }];
+    render(<DataTable columns={cols} data={items} />);
+    expect(screen.getByText("-")).toBeInTheDocument();
+  });
 });

@@ -200,7 +200,7 @@ export default function RulesPage() {
             <div className="col-span-2">
               <label className="text-xs text-slate-500 mb-0.5 block">Rules JSON</label>
               <textarea value={JSON.stringify(form.rules_json, null, 2)}
-                onChange={e => { try { setForm(f => ({ ...f, rules_json: JSON.parse(e.target.value) })); } catch {} }}
+                onChange={e => { try { const parsed = JSON.parse(e.target.value); setForm(f => ({ ...f, rules_json: parsed })); } catch {} }}
                 rows={6}
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
               <p className="text-xs text-slate-400 mt-1">JSON array of rule conditions/actions</p>

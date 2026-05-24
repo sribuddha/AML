@@ -1,7 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import ReviewCard from "./ReviewCard";
 import type { PendingSAR } from "../types";
+
+function renderWithRouter(ui: React.ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
 
 const baseSar: PendingSAR = {
   sar_id: "s1",
@@ -10,6 +15,8 @@ const baseSar: PendingSAR = {
   source_txn_id: "TXN001",
   account_id: "ACC001",
   customer_id: "CUST001",
+  customer_first_name: "John",
+  customer_last_name: "Doe",
   amount: 15000,
   counterparty: "Offshore Corp",
   city: "New York",
@@ -36,33 +43,33 @@ const baseSar: PendingSAR = {
 
 describe("ReviewCard", () => {
   it("renders transaction header info", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     expect(screen.getByText("TXN001")).toBeInTheDocument();
     expect(screen.getByText("Offshore Corp")).toBeInTheDocument();
     expect(screen.getByText("$15,000")).toBeInTheDocument();
   });
 
   it("shows collapsed by default", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     expect(screen.queryByText("Rules Triggered")).not.toBeInTheDocument();
   });
 
   it("expands detail section on click", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
     expect(screen.getByText("Rules Triggered")).toBeInTheDocument();
     expect(screen.getByText("SAR Report")).toBeInTheDocument();
   });
 
   it("shows rule names in expanded detail", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
     expect(screen.getAllByText(/High Value Check/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Offshore Location/)).toBeInTheDocument();
   });
 
   it("shows enriched context stats", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
     expect(screen.getByText("12")).toBeInTheDocument();
     expect(screen.getByText("30d Txn Count")).toBeInTheDocument();
@@ -79,61 +86,101 @@ describe("ReviewCard", () => {
   });
 
   it("shows velocity z-score in red when > 2", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
     const score = screen.getByText("2.50");
     expect(score.className).toContain("text-red-600");
   });
 
   it("shows SAR report text", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
     expect(screen.getByText("This transaction is suspicious because...")).toBeInTheDocument();
   });
 
   it("shows Dismiss and Confirm buttons", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     expect(screen.getByText("Dismiss")).toBeInTheDocument();
     expect(screen.getByText("Confirm")).toBeInTheDocument();
   });
 
   it("calls onReview with dismissed when Dismiss clicked", async () => {
     const onReview = vi.fn().mockResolvedValue(undefined);
-    render(<ReviewCard sar={baseSar} onReview={onReview} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={onReview} reviewing={false} />);
     fireEvent.click(screen.getByText("Dismiss"));
     expect(onReview).toHaveBeenCalledWith("dismissed");
   });
 
   it("calls onReview with confirmed when Confirm clicked", async () => {
     const onReview = vi.fn().mockResolvedValue(undefined);
-    render(<ReviewCard sar={baseSar} onReview={onReview} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={onReview} reviewing={false} />);
     fireEvent.click(screen.getByText("Confirm"));
     expect(onReview).toHaveBeenCalledWith("confirmed");
   });
 
   it("disables buttons while reviewing", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={true} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={true} />);
     const buttons = screen.getAllByText("...");
     expect(buttons.length).toBe(2);
     buttons.forEach(btn => expect(btn.closest("button")).toBeDisabled());
   });
 
   it("shows ... on buttons while reviewing", () => {
-    render(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={true} />);
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={true} />);
     expect(screen.getAllByText("...").length).toBe(2);
+  });
+
+  it("renders customer name as a link in header", () => {
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    const link = screen.getByText("John Doe");
+    expect(link).toBeInTheDocument();
+    expect(link.closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
+  });
+
+  it("renders customer_id link in expanded detail", () => {
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    fireEvent.click(screen.getByText("TXN001"));
+    const link = screen.getByText("Cust: John Doe");
+    expect(link).toBeInTheDocument();
+    expect(link.closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
   });
 
   it("renders without enrichment data", () => {
     const sar = { ...baseSar, enrichment: null };
-    render(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
     expect(screen.queryByText("Enriched Context")).not.toBeInTheDocument();
   });
 
   it("renders without flag_details", () => {
     const sar = { ...baseSar, flag_details: null };
-    render(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
     expect(screen.queryByText("Rules Triggered")).not.toBeInTheDocument();
+  });
+
+  it("shows raw customer_id when customer name missing in header", () => {
+    const sar = { ...baseSar, customer_first_name: undefined, customer_last_name: undefined };
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    const link = screen.getByText("CUST001");
+    expect(link).toBeInTheDocument();
+    expect(link.closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
+  });
+
+  it("shows raw customer_id when customer name missing in expanded section", () => {
+    const sar = { ...baseSar, customer_first_name: undefined, customer_last_name: undefined };
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    fireEvent.click(screen.getByText("TXN001"));
+    const link = screen.getByText("Cust: CUST001");
+    expect(link).toBeInTheDocument();
+    expect(link.closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
+  });
+
+  it("does not highlight velocity z-score when <= 2", () => {
+    const sar = { ...baseSar, enrichment: { ...baseSar.enrichment!, velocity_zscore: 1.5 } };
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    fireEvent.click(screen.getByText("TXN001"));
+    const score = screen.getByText("1.50");
+    expect(score.className).not.toContain("text-red-600");
   });
 });

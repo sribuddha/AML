@@ -19,6 +19,7 @@ from src.bff.routes.accounts import router as accounts_router
 from src.bff.routes.compliance import router as compliance_router
 from src.bff.routes.generate import router as generate_router
 from src.bff.routes.operations import router as operations_router
+from src.bff.routes.eval import router as eval_router
 
 
 @asynccontextmanager
@@ -39,18 +40,19 @@ app.add_middleware(
 )
 
 app.include_router(file_processor_router)
+app.include_router(operations_router)  # must be before read_router (static /search vs {upload_id})
 app.include_router(read_router)
 app.include_router(reprocess_router)
 app.include_router(rules_router)
+app.include_router(compliance_router)  # must be before sar_router (static /pending vs {sar_id})
 app.include_router(sar_router)
+app.include_router(eval_router)
 app.include_router(audit_router)
 app.include_router(validation_router)
 app.include_router(transactions_router)
 app.include_router(customers_router)
 app.include_router(accounts_router)
-app.include_router(compliance_router)
 app.include_router(generate_router)
-app.include_router(operations_router)
 
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles

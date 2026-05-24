@@ -166,4 +166,133 @@ describe("RulesPage", () => {
     render(<RulesPage />);
     expect(screen.getByText("Search")).toBeInTheDocument();
   });
+
+  it("shows error when saving with empty name", async () => {
+    render(<RulesPage />);
+    fireEvent.click(screen.getByText("+ Add Rule"));
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(screen.getByText("Name is required")).toBeInTheDocument();
+    });
+  });
+
+  it("shows saving state on submit", async () => {
+    mockPost.mockImplementation(() => new Promise(() => {}));
+    render(<RulesPage />);
+    fireEvent.click(screen.getByText("+ Add Rule"));
+    const nameInput = screen.getAllByRole("textbox")[2];
+    fireEvent.change(nameInput, { target: { value: "New Rule" } });
+    fireEvent.click(screen.getByText("Save"));
+    expect(screen.getByText("Saving...")).toBeInTheDocument();
+  });
+
+  it("does not call api when confirm is cancelled on toggle", async () => {
+    render(<RulesPage />);
+    await waitFor(() => {
+      expect(screen.getByText("High Value Check")).toBeInTheDocument();
+    });
+    window.confirm = vi.fn(() => false);
+    fireEvent.click(screen.getAllByText("Deactivate")[0]);
+    expect(mockPatch).not.toHaveBeenCalled();
+  });
+
+  it("shows empty state when no rules returned", async () => {
+    mockGet.mockResolvedValue({ page: 1, per_page: 25, total: 0, items: [] });
+    render(<RulesPage />);
+    await waitFor(() => {
+      expect(screen.getByText("No rules found.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows error message when fetch fails", async () => {
+    mockGet.mockRejectedValue(new Error("Network error"));
+    render(<RulesPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Network error")).toBeInTheDocument();
+    });
+  });
+
+  it("filters by status dropdown", async () => {
+    render(<RulesPage />);
+    const statusSelect = screen.getByRole("combobox");
+    fireEvent.change(statusSelect, { target: { value: "active" } });
+    expect(statusSelect).toHaveValue("active");
+  });
+
+  it("shows Retry button on error", async () => {
+    mockGet.mockRejectedValue(new Error("Server down"));
+    render(<RulesPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Retry")).toBeInTheDocument();
+    });
+  });
+
+  it("calls fetchRules on Search click", async () => {
+    mockGet.mockResolvedValue(mockResponse);
+    render(<RulesPage />);
+    await waitFor(() => {
+      expect(screen.getByText("High Value Check")).toBeInTheDocument();
+    });
+    mockGet.mockClear();
+    mockGet.mockResolvedValue(mockResponse);
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("changes form type select", async () => {
+    render(<RulesPage />);
+    fireEvent.click(screen.getByText("+ Add Rule"));
+    const typeSelect = screen.getAllByRole("combobox")[1];
+    fireEvent.change(typeSelect, { target: { value: "deterministic" } });
+    expect(typeSelect).toHaveValue("deterministic");
+  });
+
+  it("changes form status select", async () => {
+    render(<RulesPage />);
+    fireEvent.click(screen.getByText("+ Add Rule"));
+    const statusSelect = screen.getAllByRole("combobox")[2];
+    fireEvent.change(statusSelect, { target: { value: "inactive" } });
+    expect(statusSelect).toHaveValue("inactive");
+  });
+
+  it("updates description in form", async () => {
+    render(<RulesPage />);
+    fireEvent.click(screen.getByText("+ Add Rule"));
+    const descInput = screen.getAllByRole("textbox")[3];
+    fireEvent.change(descInput, { target: { value: "Test description" } });
+    expect(descInput).toHaveValue("Test description");
+  });
+
+  it("updates rules JSON with valid input", async () => {
+    render(<RulesPage />);
+    fireEvent.click(screen.getByText("+ Add Rule"));
+    const jsonTextarea = screen.getByDisplayValue("[]");
+    const validJson = JSON.stringify([{ field: "amount", operator: ">", value: 10000 }], null, 2);
+    fireEvent.change(jsonTextarea, { target: { value: validJson } });
+    expect(jsonTextarea).toHaveValue(validJson);
+  });
+
+  it("does not crash on invalid JSON in rules textarea", async () => {
+    render(<RulesPage />);
+    fireEvent.click(screen.getByText("+ Add Rule"));
+    const jsonTextarea = screen.getByDisplayValue("[]");
+    fireEvent.change(jsonTextarea, { target: { value: "invalid json" } });
+    expect(jsonTextarea).toHaveValue("[]");
+  });
+
+  it("shows alert on toggle status error", async () => {
+    mockPatch.mockRejectedValue(new Error("Update failed"));
+    window.alert = vi.fn();
+    window.confirm = vi.fn(() => true);
+    render(<RulesPage />);
+    await waitFor(() => {
+      expect(screen.getByText("High Value Check")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getAllByText("Deactivate")[0]);
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalledWith("Update failed");
+    });
+  });
 });

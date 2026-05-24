@@ -14,7 +14,7 @@ from src.aml_workflow.models.transaction_status import TransactionStatus
 from src.aml_workflow.models.upload_status import UploadStatus
 from src.bff.config import DATA_DIR
 from src.bff.database import get_db
-from src.bff.schemas import PaginatedResponse, ReviewRequest, SARResponse
+from src.bff.schemas import BatchReviewRequest, PaginatedResponse, ReviewRequest, SARResponse
 from src.file_processor.models import UploadedFiles
 
 router = APIRouter()
@@ -33,6 +33,62 @@ def _sar_to_response(s: SAR) -> SARResponse:
         reviewed_at=s.reviewed_at,
         review_notes=s.review_notes,
     )
+
+
+@router.post("/api/sar/batch-review")
+async def batch_review_sars(body: BatchReviewRequest, db: AsyncSession = Depends(get_db)):
+    if body.action not in ("confirmed", "dismissed"):
+        raise HTTPException(status_code=400, detail="Action must be 'confirmed' or 'dismissed'")
+
+    if not body.sar_ids:
+        raise HTTPException(status_code=400, detail="sar_ids list is empty")
+
+    sars = await db.execute(
+        select(SAR).where(SAR.id.in_(body.sar_ids), SAR.status == "pending_review")
+    )
+    sars = sars.scalars().all()
+
+    if not sars:
+        raise HTTPException(status_code=404, detail="No pending SARs found for the given IDs")
+
+    now = datetime.now(UTC).isoformat()
+    txn_status = "clean" if body.action == "confirmed" else "dismissed"
+
+    uploads_affected: set[str] = set()
+    for sar in sars:
+        sar.status = body.action
+        sar.reviewed_at = now
+        sar.updated_at = now
+        uploads_affected.add(sar.upload_id)
+        db.add(TransactionStatus(
+            transaction_id=sar.transaction_id,
+            status=txn_status,
+            actor="human",
+            created_at=now,
+        ))
+
+    for uid in uploads_affected:
+        remaining = await db.execute(
+            select(func.count())
+            .select_from(SAR)
+            .where(SAR.upload_id == uid, SAR.status == "pending_review")
+        )
+        if remaining.scalar() == 0:
+            upload = await db.get(UploadedFiles, uid)
+            if upload and upload.status != "complete":
+                upload.status = "complete"
+                upload.updated_at = now
+                db.add(UploadStatus(
+                    upload_id=uid,
+                    status="complete",
+                    actor="system",
+                    created_at=now,
+                ))
+
+    await db.commit()
+    logger.info("Batch %s %d SARs", body.action, len(sars))
+
+    return {"reviewed": len(sars), "action": body.action}
 
 
 @router.get("/api/sar/{sar_id}")

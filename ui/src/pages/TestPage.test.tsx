@@ -4,11 +4,13 @@ import { MemoryRouter } from "react-router-dom";
 import TestPage from "./TestPage";
 
 let mockPost = vi.fn();
+let mockGet = vi.fn();
 let mockDownload = vi.fn();
 
 vi.mock("../api/client", () => ({
   api: {
     post: (...args: unknown[]) => mockPost(...args),
+    get: (...args: unknown[]) => mockGet(...args),
     download: (...args: unknown[]) => mockDownload(...args),
   },
   ApiError: class extends Error {
@@ -31,7 +33,10 @@ function renderPage() {
 describe("TestPage", () => {
   beforeEach(() => {
     mockPost.mockReset();
+    mockGet.mockReset();
     mockDownload.mockReset();
+    mockGet.mockResolvedValue(undefined);
+    Element.prototype.scrollIntoView = vi.fn();
   });
 
   it("renders heading and DEV ONLY badge", () => {
@@ -150,14 +155,15 @@ describe("TestPage", () => {
   });
 
   it("shows download section after success", async () => {
-    mockPost.mockResolvedValue({ download_url: "/work/test.csv" });
+    mockGet.mockResolvedValue({ fieldnames: ["a"], rows: [{ a: "1" }] });
+    mockPost.mockResolvedValue({ download_url: "/api/generate/download/test.csv", filename: "test.csv" });
     renderPage();
     fireEvent.click(screen.getByText("Generate"));
     await waitFor(() => {
       expect(screen.getByText("File generated successfully")).toBeInTheDocument();
     });
     expect(screen.getByText("Download CSV")).toBeInTheDocument();
-    expect(screen.getByText("Upload to Operations")).toBeInTheDocument();
+    expect(screen.getByText("Upload to Pipeline")).toBeInTheDocument();
   });
 
   it("shows error message on failure", async () => {
@@ -185,5 +191,109 @@ describe("TestPage", () => {
         ],
       }));
     });
+  });
+
+  it("toggles shuffle checkbox off", () => {
+    renderPage();
+    const shuffleCheckbox = screen.getByLabelText("Shuffle after generation") as HTMLInputElement;
+    fireEvent.click(shuffleCheckbox);
+    expect(shuffleCheckbox.checked).toBe(false);
+  });
+
+  it("changes date input", () => {
+    renderPage();
+    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    fireEvent.change(dateInput, { target: { value: "2026-06-15" } });
+    expect(dateInput.value).toBe("2026-06-15");
+  });
+
+  it("renders label click toggling unchecked generator", () => {
+    renderPage();
+    const label = screen.getByText("Stage 1 Fraud");
+    fireEvent.click(label);
+    const checkboxes = screen.getAllByRole("checkbox") as HTMLInputElement[];
+    expect(checkboxes[1].checked).toBe(true);
+  });
+
+  it("calls api.download on Download CSV click", async () => {
+    mockGet.mockResolvedValue({ fieldnames: ["a"], rows: [{ a: "1" }] });
+    mockPost.mockResolvedValue({ download_url: "/api/generate/download/test.csv", filename: "test.csv" });
+    renderPage();
+    fireEvent.click(screen.getByText("Generate"));
+    await waitFor(() => {
+      expect(screen.getByText("Download CSV")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Download CSV"));
+    expect(mockDownload).toHaveBeenCalledWith("/api/generate/download/test.csv");
+  });
+
+  it("calls api.post on Upload to Pipeline click", async () => {
+    mockGet.mockResolvedValue({ fieldnames: ["a"], rows: [{ a: "1" }] });
+    mockPost.mockResolvedValue({ download_url: "/api/generate/download/test.csv", filename: "test.csv" });
+    renderPage();
+    fireEvent.click(screen.getByText("Generate"));
+    await waitFor(() => {
+      expect(screen.getByText("File generated successfully")).toBeInTheDocument();
+    });
+    mockPost.mockResolvedValue({});
+    fireEvent.click(screen.getByText("Upload to Pipeline"));
+    await waitFor(() => {
+      expect(mockPost).toHaveBeenCalledWith("/api/uploads/from-work/test.csv");
+    });
+  });
+
+  it("shows spinner while uploading", async () => {
+    let resolveUpload: (v: unknown) => void;
+    const uploadPromise = new Promise((r) => { resolveUpload = r; });
+    mockGet.mockResolvedValue({ fieldnames: ["a"], rows: [{ a: "1" }] });
+    mockPost.mockResolvedValue({ download_url: "/api/generate/download/test.csv", filename: "test.csv" });
+    renderPage();
+    fireEvent.click(screen.getByText("Generate"));
+    await waitFor(() => {
+      expect(screen.getByText("File generated successfully")).toBeInTheDocument();
+    });
+    mockPost.mockReturnValue(uploadPromise);
+    fireEvent.click(screen.getByText("Upload to Pipeline"));
+    await waitFor(() => {
+      expect(screen.getByText("Uploading...")).toBeInTheDocument();
+    });
+    resolveUpload!({});
+  });
+
+  it("shows error on upload failure", async () => {
+    mockGet.mockResolvedValue({ fieldnames: ["a"], rows: [{ a: "1" }] });
+    mockPost.mockResolvedValue({ download_url: "/api/generate/download/test.csv", filename: "test.csv" });
+    renderPage();
+    fireEvent.click(screen.getByText("Generate"));
+    await waitFor(() => {
+      expect(screen.getByText("File generated successfully")).toBeInTheDocument();
+    });
+    mockPost.mockRejectedValue(new Error("Upload rejected"));
+    fireEvent.click(screen.getByText("Upload to Pipeline"));
+    await waitFor(() => {
+      expect(screen.getByText("Upload rejected")).toBeInTheDocument();
+    });
+  });
+
+  it("shows eval data tab when eval_url present", async () => {
+    mockGet.mockImplementation((url: string) => {
+      if (url.includes("/preview/")) return Promise.resolve({ fieldnames: ["a"], rows: [{ a: "1" }] });
+      return Promise.resolve([{ source_txn_id: "T1", scenario: "structuring", expected_escalate: true, ground_truth: "Structuring", reason_hint: "Pattern" }]);
+    });
+    mockPost.mockResolvedValue({
+      download_url: "/api/generate/download/test.csv",
+      eval_url: "/api/download/eval.json",
+      filename: "test.csv",
+    });
+    renderPage();
+    fireEvent.click(screen.getByText("Generate"));
+    await waitFor(() => {
+      expect(screen.getByText("File generated successfully")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("Eval Data"));
+    await waitFor(() => {
+      expect(screen.getByText("T1")).toBeInTheDocument();
+    });
+    expect(screen.getByText("structuring")).toBeInTheDocument();
   });
 });

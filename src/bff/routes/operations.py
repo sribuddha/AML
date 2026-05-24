@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.aml_workflow.models.sar import SAR
 from src.bff.database import get_db
 from src.bff.schemas import PaginatedResponse, UploadSummaryResponse
 from src.file_processor.models import UploadedFiles
@@ -43,6 +44,17 @@ async def search_uploads(
         .all()
     )
 
+    upload_ids = [u.id for u in rows]
+    pending_map: dict[str, int] = {}
+    if upload_ids:
+        pending_rows = await db.execute(
+            select(SAR.upload_id, func.count().label("cnt"))
+            .where(SAR.upload_id.in_(upload_ids), SAR.status == "pending_review")
+            .group_by(SAR.upload_id)
+        )
+        for pr in pending_rows:
+            pending_map[pr.upload_id] = pr.cnt
+
     items = [
         UploadSummaryResponse(
             id=u.id,
@@ -52,6 +64,8 @@ async def search_uploads(
             accepted_count=u.accepted_count,
             failed_count=u.failed_count,
             uploaded_at=u.uploaded_at,
+            eval_file=u.eval_file,
+            pending_sar_count=pending_map.get(u.id, 0),
         )
         for u in rows
     ]

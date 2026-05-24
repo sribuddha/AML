@@ -7,6 +7,7 @@ from src.aml_workflow.models.rule import Rule
 from src.aml_workflow.models.sar import SAR
 from src.aml_workflow.models.validation_result import ValidationResult
 from src.bff.database import get_db
+from src.bff.models.customer import Customer
 from src.bff.schemas import PendingSARResponse, PaginatedResponse
 from src.file_processor.models import Transaction
 
@@ -16,12 +17,13 @@ router = APIRouter()
 @router.get("/api/sar/pending")
 async def list_pending_sars(
     upload_id: str | None = Query(None),
+    customer_id: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedResponse[PendingSARResponse]:
     base = (
-        select(SAR, Transaction, ValidationResult, EnrichmentSnapshot, Rule)
+        select(SAR, Transaction, ValidationResult, EnrichmentSnapshot, Rule, Customer)
         .join(Transaction, SAR.transaction_id == Transaction.id)
         .outerjoin(ValidationResult, SAR.transaction_id == ValidationResult.transaction_id)
         .outerjoin(
@@ -30,11 +32,14 @@ async def list_pending_sars(
             & (Transaction.customer_id == EnrichmentSnapshot.customer_id),
         )
         .outerjoin(Rule, SAR.rule_id == Rule.id)
+        .outerjoin(Customer, Transaction.customer_id == Customer.customer_id)
         .where(SAR.status == "pending_review")
     )
 
     if upload_id is not None:
         base = base.where(SAR.upload_id == upload_id)
+    if customer_id is not None:
+        base = base.where(Transaction.customer_id == customer_id)
 
     count_stmt = select(func.count()).select_from(base.subquery())
     total = (await db.execute(count_stmt)).scalar()
@@ -49,7 +54,7 @@ async def list_pending_sars(
     )
 
     items = []
-    for sar, txn, vr, enr, rule in rows:
+    for sar, txn, vr, enr, rule, customer in rows:
         enrichment = None
         if enr is not None:
             enrichment = {
@@ -84,6 +89,8 @@ async def list_pending_sars(
                 enrichment=enrichment,
                 rule_name=rule.name if rule is not None else None,
                 rule_description=rule.description if rule is not None else None,
+                customer_first_name=customer.first_name if customer is not None else None,
+                customer_last_name=customer.last_name if customer is not None else None,
                 sar_content=sar.content,
                 sar_status=sar.status,
                 created_at=sar.created_at,

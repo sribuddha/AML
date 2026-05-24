@@ -9,7 +9,7 @@ from src.aml_workflow.llm import LLMClient
 from src.bff.config import DATA_DIR
 from src.bff.logger import logger
 
-DEFAULT_MODE = "stage2"
+DEFAULT_MODE = "full"
 
 
 async def run_validation(upload_id: str, db: AsyncSession, llm: LLMClient | None = None, mode: str | None = None) -> None:

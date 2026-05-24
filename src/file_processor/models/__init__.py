@@ -20,6 +20,7 @@ class UploadedFiles(Base):
     uploaded_at: Mapped[str | None] = mapped_column(String)
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)
+    eval_file: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
 class Transaction(Base):

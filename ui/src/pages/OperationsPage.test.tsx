@@ -2,23 +2,49 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import OperationsPage from "./OperationsPage";
-import type { UploadSummary, PaginatedResponse } from "../types";
+import type { UploadSummary, PaginatedResponse, EvalReport } from "../types";
 
 const mockUploads: UploadSummary[] = [
-  { id: "upload-001", filename: "data.csv", status: "pending_human", total_rows: 100, accepted_count: 95, failed_count: 5, uploaded_at: "2026-05-01T00:00:00Z" },
-  { id: "upload-002", filename: "old.csv", status: "complete", total_rows: 50, accepted_count: 50, failed_count: 0, uploaded_at: "2026-04-01T00:00:00Z" },
+  { id: "upload-001", filename: "data.csv", status: "pending_human", total_rows: 100, accepted_count: 95, failed_count: 5, uploaded_at: "2026-05-01T00:00:00Z", eval_file: null, pending_sar_count: 3 },
+  { id: "upload-002", filename: "old.csv", status: "complete", total_rows: 50, accepted_count: 50, failed_count: 0, uploaded_at: "2026-04-01T00:00:00Z", eval_file: null, pending_sar_count: 0 },
+  { id: "upload-003", filename: "eval_test.csv", status: "complete", total_rows: 200, accepted_count: 190, failed_count: 10, uploaded_at: "2026-05-02T00:00:00Z", eval_file: "test.eval", pending_sar_count: 0 },
 ];
 
 const mockResponse: PaginatedResponse<UploadSummary> = {
-  page: 1, per_page: 25, total: 2, items: mockUploads,
+  page: 1, per_page: 25, total: 3, items: mockUploads,
+};
+
+const mockEvalReport: EvalReport = {
+  upload_id: "upload-003",
+  total_transactions: 200,
+  total_anomalous: 50,
+  total_flagged: 40,
+  pattern_metrics: [
+    { pattern: "Structuring", total: 20, flagged: 18, precision: 0.9, recall: 0.85, f1: 0.87 },
+  ],
+  hallucination_results: [
+    { sar_id: "sar001", transaction_id: "t001", hallucinated_facts: ["$10,000"], passed: false },
+    { sar_id: "sar002", transaction_id: "t002", hallucinated_facts: [], passed: true },
+  ],
+  completeness_results: [
+    { sar_id: "sar001", transaction_id: "t001", covered_rules: ["Rule A"], missed_rules: ["Rule B"], score: 0.5 },
+    { sar_id: "sar003", transaction_id: "t003", covered_rules: ["Rule C"], missed_rules: [], score: 1 },
+  ],
+  overall_precision: 0.8,
+  overall_recall: 0.75,
+  overall_f1: 0.77,
+  hallucination_free_rate: 0.85,
+  avg_completeness: 0.75,
 };
 
 let mockGet = vi.fn();
 let mockUpload = vi.fn();
+let mockPost = vi.fn();
 
 vi.mock("../api/client", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
+    post: (...args: unknown[]) => mockPost(...args),
     upload: (...args: unknown[]) => mockUpload(...args),
     download: vi.fn(),
   },
@@ -43,6 +69,7 @@ describe("OperationsPage", () => {
   beforeEach(() => {
     mockGet.mockReset();
     mockUpload.mockReset();
+    mockPost.mockReset();
     mockGet.mockResolvedValue(mockResponse);
   });
 
@@ -157,7 +184,7 @@ describe("OperationsPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/data\.csv/)).toBeInTheDocument();
     });
-    const links = screen.getAllByText(/…/);
+    const links = screen.getAllByText("upload-001");
     expect(links.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -199,6 +226,172 @@ describe("OperationsPage", () => {
     fireEvent.click(screen.getByText("Search"));
     await waitFor(() => {
       expect(screen.getByText("No uploads found.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Eval button for completed upload with eval_file", async () => {
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => {
+      expect(screen.getByText("eval_test.csv")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument();
+  });
+
+  it("opens eval modal on Eval click with loading spinner", async () => {
+    let resolve: (v: unknown) => void;
+    const promise = new Promise((r) => { resolve = r; });
+    mockPost.mockReturnValue(promise);
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Eval" }));
+    await waitFor(() => {
+      expect(screen.getByText("Running evaluation...")).toBeInTheDocument();
+    });
+    resolve!(mockEvalReport);
+  });
+
+  it("shows eval report after successful evaluation", async () => {
+    mockPost.mockResolvedValue(mockEvalReport);
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Eval" }));
+    await waitFor(() => {
+      expect(screen.getByText("Transactions")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Anomalous (expected)")).toBeInTheDocument();
+    expect(screen.getByText("Flagged (actual)")).toBeInTheDocument();
+    expect(screen.getByText("Hallucination-Free")).toBeInTheDocument();
+    expect(screen.getByText("Avg Completeness")).toBeInTheDocument();
+    expect(screen.getByText("Structuring")).toBeInTheDocument();
+  });
+
+  it("shows hallucination issues in eval modal", async () => {
+    mockPost.mockResolvedValue(mockEvalReport);
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Eval" }));
+    await waitFor(() => {
+      expect(screen.getByText("Hallucination Issues")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/\$10,000/)).toBeInTheDocument();
+  });
+
+  it("shows completeness issues in eval modal", async () => {
+    mockPost.mockResolvedValue(mockEvalReport);
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Eval" }));
+    await waitFor(() => {
+      expect(screen.getByText("Completeness Issues")).toBeInTheDocument();
+    });
+    expect(screen.getByText((content) => content.includes("Rule B"))).toBeInTheDocument();
+  });
+
+  it("shows error in eval modal on failure", async () => {
+    mockPost.mockRejectedValue(new Error("Eval request failed"));
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Eval" }));
+    await waitFor(() => {
+      expect(screen.getByText("Eval request failed")).toBeInTheDocument();
+    });
+  });
+
+  it("closes eval modal on backdrop click", async () => {
+    mockPost.mockResolvedValue(mockEvalReport);
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Eval" }));
+    await waitFor(() => {
+      expect(screen.getByText("Transactions")).toBeInTheDocument();
+    });
+    const backdrop = document.querySelector(".fixed.inset-0");
+    if (backdrop) fireEvent.click(backdrop);
+    await waitFor(() => {
+      expect(screen.queryByText("Transactions")).not.toBeInTheDocument();
+    });
+  });
+
+  it("auto-searches with ?tab=search URL param", async () => {
+    mockGet.mockResolvedValue(mockResponse);
+    render(
+      <MemoryRouter initialEntries={["/operations?tab=search"]}>
+        <OperationsPage />
+      </MemoryRouter>
+    );
+    await waitFor(() => {
+      expect(screen.getByText("data.csv")).toBeInTheDocument();
+    });
+    expect(mockGet).toHaveBeenCalledWith("/api/uploads/search", expect.objectContaining({ page: 1 }));
+  });
+
+  it("closes eval modal via × button", async () => {
+    mockPost.mockResolvedValue(mockEvalReport);
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Eval" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Eval" }));
+    await waitFor(() => {
+      expect(screen.getByText("Eval Report")).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText("\u00D7"));
+    await waitFor(() => {
+      expect(screen.queryByText("Eval Report")).not.toBeInTheDocument();
+    });
+  });
+
+  it("switches back to Upload tab after search", async () => {
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Upload"));
+    const uploadTab = screen.getByText("Upload");
+    expect(uploadTab.className).toContain("bg-white");
+    expect(screen.getByText(/drag.*drop.*csv/i)).toBeInTheDocument();
+  });
+
+  it("clicks View Uploads link after upload", async () => {
+    mockUpload.mockResolvedValue({ total_rows: 100, accepted_count: 95, failed_count: 5 });
+    renderPage();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["a"], "test.csv", { type: "text/csv" })] } });
+    fireEvent.click(screen.getByRole("button", { name: /upload test.csv/i }));
+    await waitFor(() => {
+      expect(screen.getByText(/View Uploads/)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByText(/View Uploads/));
+    await waitFor(() => {
+      expect(screen.getByText("Search Uploads").className).toContain("bg-white");
+    });
+  });
+
+  it("clicks status tab to filter", async () => {
+    renderPage();
+    fireEvent.click(screen.getByText("Search Uploads"));
+    fireEvent.click(screen.getByText("Complete"));
+    fireEvent.click(screen.getByText("Search"));
+    await waitFor(() => {
+      expect(mockGet).toHaveBeenCalledWith("/api/uploads/search", expect.objectContaining({
+        status: "complete", page: 1, per_page: 25,
+      }));
     });
   });
 });

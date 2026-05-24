@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { api } from "../api/client";
-import type { CustomerDetail } from "../types";
+import { api, ApiError } from "../api/client";
+import ReviewCard from "../components/ReviewCard";
+import type { CustomerDetail, PendingSAR, PaginatedResponse } from "../types";
 
 export default function CustomerDetailPage() {
   const { customerId } = useParams<{ customerId: string }>();
@@ -9,6 +10,12 @@ export default function CustomerDetailPage() {
   const [data, setData] = useState<CustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sars, setSars] = useState<PendingSAR[]>([]);
+  const [sarsLoading, setSarsLoading] = useState(true);
+  const [sarsError, setSarsError] = useState<string | null>(null);
+  const [reviewing, setReviewing] = useState<string | null>(null);
+  const [batchReviewing, setBatchReviewing] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!customerId) return;
@@ -19,6 +26,78 @@ export default function CustomerDetailPage() {
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
   }, [customerId]);
+
+  const fetchSars = useCallback(async () => {
+    if (!customerId) return;
+    setSarsLoading(true);
+    setSarsError(null);
+    try {
+      const result = await api.get<PaginatedResponse<PendingSAR>>("/api/sar/pending", {
+        customer_id: customerId,
+        per_page: 100,
+      });
+      setSars(result.items);
+    } catch (e: unknown) {
+      if (e instanceof ApiError && e.status === 404) {
+        setSars([]);
+      } else {
+        setSarsError(e instanceof Error ? e.message : "Failed to load");
+      }
+    } finally {
+      setSarsLoading(false);
+    }
+  }, [customerId]);
+
+  useEffect(() => { fetchSars(); }, [fetchSars]);
+
+  const handleReview = async (sarId: string, action: string) => {
+    setReviewing(sarId);
+    try {
+      await api.patch(`/api/sar/${sarId}/review`, { action, notes: "" });
+      await new Promise(r => setTimeout(r, 1000));
+      setReviewing(null);
+      await fetchSars();
+      setSelectedIds(new Set());
+      window.dispatchEvent(new CustomEvent("sar-reviewed"));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Review failed";
+      alert(msg);
+      setReviewing(null);
+    }
+  };
+
+  const handleBatchReview = async (action: string) => {
+    if (selectedIds.size === 0) return;
+    setBatchReviewing(true);
+    try {
+      await api.post("/api/sar/batch-review", { sar_ids: Array.from(selectedIds), action });
+      await new Promise(r => setTimeout(r, 1000));
+      await fetchSars();
+      setSelectedIds(new Set());
+      window.dispatchEvent(new CustomEvent("sar-reviewed"));
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Batch review failed";
+      alert(msg);
+    } finally {
+      setBatchReviewing(false);
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === sars.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sars.map(s => s.sar_id)));
+    }
+  };
 
   if (loading) return (
     <div className="space-y-4">
@@ -118,6 +197,71 @@ export default function CustomerDetailPage() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Pending SARs */}
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">Pending SARs ({sars.length})</h3>
+          {sars.length > 0 && (
+            <div className="flex gap-2">
+              <button onClick={() => handleBatchReview("confirmed")}
+                disabled={batchReviewing || selectedIds.size === 0}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {batchReviewing ? "..." : "Accept All"}
+              </button>
+              <button onClick={() => handleBatchReview("dismissed")}
+                disabled={batchReviewing || selectedIds.size === 0}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {batchReviewing ? "..." : "Dismiss All"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {sarsLoading && (
+          <div className="p-5 space-y-3">
+            {[1, 2].map(i => (
+              <div key={i} className="h-20 bg-slate-100 rounded animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {sarsError && (
+          <div className="p-5 flex items-center justify-between">
+            <span className="text-sm text-red-700">{sarsError}</span>
+            <button onClick={fetchSars} className="text-sm font-medium text-red-700 hover:text-red-900">Retry</button>
+          </div>
+        )}
+
+        {!sarsLoading && !sarsError && sars.length === 0 && (
+          <div className="p-5 text-sm text-slate-400">No pending SARs for this customer.</div>
+        )}
+
+        {!sarsLoading && !sarsError && sars.length > 0 && (
+          <div className="p-5 space-y-3">
+            <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer mb-3">
+              <input type="checkbox" checked={selectedIds.size > 0 && selectedIds.size === sars.length}
+                onChange={toggleSelectAll}
+                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+              {selectedIds.size > 0 ? `${selectedIds.size} selected` : "Select all"}
+            </label>
+            {sars.map(sar => (
+              <div key={sar.sar_id} className="flex items-start gap-3">
+                <input type="checkbox" checked={selectedIds.has(sar.sar_id)}
+                  onChange={() => toggleSelect(sar.sar_id)}
+                  className="mt-5 ml-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <ReviewCard
+                    sar={sar}
+                    onReview={(action) => handleReview(sar.sar_id, action)}
+                    reviewing={reviewing === sar.sar_id}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

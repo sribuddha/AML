@@ -54,4 +54,5 @@ describe("Pagination", () => {
     const btn = screen.getByText("2");
     expect(btn.className).toContain("bg-blue-600");
   });
+
 });

@@ -100,4 +100,26 @@ describe("Layout", () => {
     const ops = screen.getByText("Operations").closest("button")!;
     expect(ops.className).not.toContain("text-blue-700");
   });
+
+  it("shows badge with count when pending SARs > 0", async () => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ total: 5 });
+    renderLayout();
+    const badge = await screen.findByText("5");
+    expect(badge).toBeInTheDocument();
+    expect(badge.className).toContain("bg-red-500");
+  });
+
+  it("shows 99+ badge when count exceeds 99", async () => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ total: 150 });
+    renderLayout();
+    const badge = await screen.findByText("99+");
+    expect(badge).toBeInTheDocument();
+  });
+
+  it("does not show badge when count is 0", async () => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ total: 0 });
+    renderLayout();
+    await new Promise(r => setTimeout(r, 50));
+    expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
 });

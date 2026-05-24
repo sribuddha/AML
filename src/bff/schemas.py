@@ -22,6 +22,8 @@ class UploadSummaryResponse(BaseModel):
     accepted_count: int | None = None
     failed_count: int = 0
     uploaded_at: str | None = None
+    eval_file: str | None = None
+    pending_sar_count: int = 0
 
 
 class TransactionResponse(BaseModel):
@@ -133,6 +135,11 @@ class ReviewRequest(BaseModel):
     notes: str | None = None
 
 
+class BatchReviewRequest(BaseModel):
+    sar_ids: list[str]
+    action: str
+
+
 class TransactionRowResponse(BaseModel):
     id: str
     source_txn_id: str
@@ -190,6 +197,8 @@ class PendingSARResponse(BaseModel):
     source_txn_id: str | None = None
     account_id: str | None = None
     customer_id: str | None = None
+    customer_first_name: str | None = None
+    customer_last_name: str | None = None
     amount: float | None = None
     counterparty: str | None = None
     city: str | None = None
@@ -216,3 +225,55 @@ class GenerateRequest(BaseModel):
     steps: list[GenerateStep] = [GenerateStep(type="upload")]
     shuffle: bool = True
     date: str | None = None
+
+class GenerateResponse(BaseModel):
+    download_url: str
+    filename: str
+    eval_url: str | None = None
+
+
+class EvalEntry(BaseModel):
+    source_txn_id: str
+    scenario: str = ""
+    expected_escalate: bool = True
+    ground_truth: str = ""
+    reason_hint: str = ""
+
+
+class PatternMetricsResponse(BaseModel):
+    pattern: str
+    total: int = 0
+    flagged: int = 0
+    precision: float = 0.0
+    recall: float = 0.0
+    f1: float = 0.0
+
+
+class HallucinationResultResponse(BaseModel):
+    sar_id: str
+    transaction_id: str
+    hallucinated_facts: list[str] = []
+    passed: bool = True
+
+
+class CompletenessResultResponse(BaseModel):
+    sar_id: str
+    transaction_id: str
+    covered_rules: list[str] = []
+    missed_rules: list[str] = []
+    score: float = 1.0
+
+
+class EvalReportResponse(BaseModel):
+    upload_id: str
+    total_transactions: int = 0
+    total_anomalous: int = 0
+    total_flagged: int = 0
+    pattern_metrics: list[PatternMetricsResponse] = []
+    hallucination_results: list[HallucinationResultResponse] = []
+    completeness_results: list[CompletenessResultResponse] = []
+    overall_precision: float = 0.0
+    overall_recall: float = 0.0
+    overall_f1: float = 0.0
+    hallucination_free_rate: float = 1.0
+    avg_completeness: float = 1.0

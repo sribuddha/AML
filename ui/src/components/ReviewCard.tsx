@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { PendingSAR } from "../types";
 import StatusBadge from "./StatusBadge";
 
@@ -16,19 +17,53 @@ export default function ReviewCard({ sar, onReview, reviewing }: ReviewCardProps
       {/* Transaction Header - always visible */}
       <div className="px-5 py-4 flex items-start justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-1">
-            <span className="font-mono text-sm text-slate-500">{sar.source_txn_id}</span>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            {sar.source_txn_id ? (
+              <Link to={`/transactions?source_txn_id=${encodeURIComponent(sar.source_txn_id)}`}
+                className="font-mono text-sm text-blue-600 hover:text-blue-800 hover:underline">
+                {sar.source_txn_id}
+              </Link>
+            ) : (
+              <span className="font-mono text-sm text-slate-500">—</span>
+            )}
             <StatusBadge status={sar.sar_status} />
+            {sar.risk_level && (
+              <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ${
+                sar.risk_level === "high" ? "bg-red-100 text-red-700" :
+                sar.risk_level === "medium" ? "bg-amber-100 text-amber-700" :
+                "bg-green-100 text-green-700"
+              }`}>
+                {sar.risk_level}
+              </span>
+            )}
+            {sar.customer_id && (
+              <Link to={`/compliance?customer_id=${encodeURIComponent(sar.customer_id)}`}
+                className="font-mono text-xs text-blue-600 hover:text-blue-800 hover:underline shrink-0 inline-flex items-center gap-1">
+                {sar.customer_first_name && sar.customer_last_name
+                  ? `${sar.customer_first_name} ${sar.customer_last_name}`
+                  : sar.customer_id}
+                <svg className="w-3 h-3 text-slate-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="6.5" cy="6.5" r="4.5" />
+                  <line x1="10" y1="10" x2="14" y2="14" />
+                </svg>
+              </Link>
+            )}
           </div>
           <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
             <span className="text-slate-700 font-medium">${sar.amount?.toLocaleString() ?? "—"}</span>
             <span className="text-slate-500">{sar.counterparty}</span>
             <span className="text-slate-500">{[sar.city, sar.state, sar.country].filter(Boolean).join(", ") || "—"}</span>
             <span className="text-slate-500">{sar.date || "—"}</span>
+            {sar.account_id && (
+              <Link to={`/transactions?account_id=${encodeURIComponent(sar.account_id)}`}
+                className="font-mono text-blue-600 hover:text-blue-800 hover:underline">
+                {sar.account_id}
+              </Link>
+            )}
           </div>
           {sar.rule_name && (
             <div className="mt-1.5 text-xs text-slate-400">
-              Rule: {sar.rule_name}{sar.risk_level ? ` · Risk: ${sar.risk_level}` : ""}
+              Rule: {sar.rule_name}
             </div>
           )}
         </div>
@@ -46,7 +81,7 @@ export default function ReviewCard({ sar, onReview, reviewing }: ReviewCardProps
                 {Object.entries(sar.flag_details).map(([id, name]) => (
                   <div key={id} className="text-sm text-slate-700 flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
-                    {name} <span className="text-slate-400 text-xs">({id})</span>
+                    {name}
                   </div>
                 ))}
               </div>
@@ -103,6 +138,34 @@ export default function ReviewCard({ sar, onReview, reviewing }: ReviewCardProps
               </div>
             );
           })()}
+
+          {/* Transaction Links */}
+          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            {sar.source_txn_id && (
+              <Link to={`/transactions?source_txn_id=${encodeURIComponent(sar.source_txn_id)}`}
+                className="text-blue-600 hover:text-blue-800 hover:underline">
+                Txn: {sar.source_txn_id}
+              </Link>
+            )}
+            {sar.account_id && (
+              <Link to={`/transactions?account_id=${encodeURIComponent(sar.account_id)}`}
+                className="text-blue-600 hover:text-blue-800 hover:underline">
+                Acct: {sar.account_id}
+              </Link>
+            )}
+            {sar.customer_id && (
+              <Link to={`/compliance?customer_id=${encodeURIComponent(sar.customer_id)}`}
+                className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1">
+                Cust: {sar.customer_first_name && sar.customer_last_name
+                  ? `${sar.customer_first_name} ${sar.customer_last_name}`
+                  : sar.customer_id}
+                <svg className="w-3 h-3 text-slate-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="6.5" cy="6.5" r="4.5" />
+                  <line x1="10" y1="10" x2="14" y2="14" />
+                </svg>
+              </Link>
+            )}
+          </div>
 
           {/* SAR Narrative */}
           <div>
