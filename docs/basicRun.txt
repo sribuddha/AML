@@ -1,0 +1,37 @@
+
+Stage 1 Testing 
+------------------
+1. Seeding
+
+2. Generate Files
+Step 1: python -m scripts.generate_upload_data --count 20 --bad-rate 2  --output test.csv 
+Step 2: python -m scripts.generate_stage1_fraud_data --count 6  --output test.csv  
+Step 3: python -m scripts.data_scrambler test.csv 
+
+3. RUn the backend server
+Step 1: python -m uvicorn src.bff.app:app --reload --port 8000
+
+4. Kick off
+Step 1: Issue Upload command
+ $r = curl.exe -s -X POST http://localhost:8000/api/uploads -F "file=@test.csv" | ConvertFrom-Json                  
+Step 2: Get ID for refernce
+$id = $r.upload_id 
+Step 3: Get summary of upload_id
+curl.exe -s "http://localhost:8000/api/uploads/$id/validation" | ConvertFrom-Json
+Step 4: Get IDs for human review
+curl.exe -s "http://localhost:8000/api/sar?upload_id=$id&status=pending_review" | ConvertFrom-Json | Select-Object -ExpandProperty items | Format-Table id, transaction_id, status, content
+Step 5: Approve/Reject for each id
+curl.exe -s -X PATCH "http://localhost:8000/api/sar/df8af7a9-0e74-440c-bf27-ee045806effa/review" -H "Content-Type: application/json" -d '{\"action\":\"approve\",\"notes\":\"Approved\"}' 
+or 
+To approve everything
+$ids = curl.exe -s "http://localhost:8000/api/sar?upload_id=$id&status=pending_review" | ConvertFrom-Json | Select-Object -ExpandProperty items
+$ids | ForEach-Object { 
+  $body = @{action="approve"; notes="Approved"}
+  $r = Invoke-RestMethod -Uri "http://localhost:8000/api/sar/$($_.id)/review" -Method PATCH -ContentType "application/json" -Body ($body | ConvertTo-Json -Compress)
+  Write-Host "$($_.id): $($r.status)"
+}
+
+5. Validation Steps
+a. CHeck upload_id status
+b. check teh count uploaded, number failed and number human decisions (approved or rejected)
+c. Check Audit logs

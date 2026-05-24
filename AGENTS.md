@@ -1,0 +1,49 @@
+# AGENTS.md
+
+## Source of Truth
+
+- `docs/Technical_Spec.md`
+  - §1 Overview / Summary
+  - §2 Goals & Non-Goals
+  - §3 Background / Context
+  - §4 Requirements
+  - §5 High Level Architecture
+  - §6 Detailed Design
+  - §7 Infrastructure
+  - §8 API Design
+  - §9 Persistence
+  - §10 Dependencies
+  - §11 Scripts
+  - §12 Security Considerations
+  - §13 Performance & Scalability
+  - §14 Logs
+  - §15 Open Questions
+  - §16 References / Appendix
+  - §17 Out of Scope (v1)
+
+- `docs/runbook.md` — operational commands
+
+- `docs/progress.md` — build status, key decisions, testing conventions, what's left
+
+## SDLC for New Features — MANDATORY
+
+BEFORE STARTING WORK, RE-READ THIS SECTION. DO NOT SKIP STEPS.
+
+1. **Re-read this entire section.**
+2. **Update docs** (`Technical_Spec.md`, `progress.md`, `runbook.md`) if the feature changes API surface, schema, or operational flow.
+3. **Write E2E tests** — run them to confirm they **FAIL**.
+4. **Implement code** — only after step 3.
+   - Review uncovered code paths introduced by this change and add missing tests.
+   - Update docs if API surface, schema, or operational flow changed during implementation (diff from step 2).
+5. **Write unit tests** for all new modules.
+6. **Run coverage** (`python -m pytest tests/ --cov --cov-report=term-missing`) — ≥ 90%.
+
+**No exceptions.** Every feature — regardless of size — follows this sequence.
+
+## Doc-only / Script-only changes
+
+**Do NOT run tests when only docs or scripts changed** (`.md`, `.txt`, files under `scripts/`, `docs/`). Test outcomes cannot change when no code under `src/` was modified. Skipping saves time and avoids confusion.
+
+## Ad-hoc analysis files
+
+Place all one-off analysis scripts, temp queries, and generated outputs under `work/` (already gitignored). Do not create them in the repo root. Use `work/tmp_*.py` or `Path(tempfile.mktemp(dir="work"))` for disposable files.

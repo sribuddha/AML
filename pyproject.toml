@@ -1,0 +1,48 @@
+[project]
+name = "aml"
+version = "0.1.0"
+description = "Transaction validation app with FastAPI BFF, LangGraph workflow, and React UI"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "aiosqlite>=0.20.0",
+    "python-multipart>=0.0.20",
+    "pandas>=2.2.0",
+    "faker>=33.0.0",
+    "alembic>=1.14.0",
+    "langgraph>=1.2.0",
+    "langgraph-checkpoint-sqlite>=3.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=5.0.0",
+    "httpx>=0.28.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/__pycache__/*", "*/migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[project.scripts]
+init-db = "scripts.init_db:main"
+seed-db = "scripts.seed_db:main"
+delete-upload = "scripts.delete_upload:run"
+generate-sample = "scripts.test_generate_upload_data:main"
+generate-fraud = "scripts.test_generate_fraud_data:main"
+generate-upload-data = "scripts.generate_upload_data:main"
+generate-stage1-fraud = "scripts.generate_stage1_fraud_data:main"
+data-scrambler = "scripts.data_scrambler:main"

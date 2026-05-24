@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local data
+data/
+*.db
+
+# Coverage artifacts
+.coverage
+*.py,cover
+.vscode
+resources
+data
+
+# Environment
+.env
+.env.local
+work
+Technical_Spec_template.md

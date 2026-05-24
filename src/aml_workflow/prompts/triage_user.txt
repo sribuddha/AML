@@ -1,0 +1,11 @@
+Transaction:
+- Source TXN ID: {source_txn_id}
+- Account: {account_id}
+- Customer: {customer_id}
+- Amount: ${amount:,.2f}
+- Counterparty: {counterparty}
+- Location: {location}
+- Date: {date}
+
+Flagged by rules ({rules_flagged}):
+{rule_evidence}
