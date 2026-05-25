@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.bff.database import Base
@@ -15,6 +15,9 @@ class SAR(Base):
     rule_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("rule.id"), nullable=True)
     content: Mapped[str] = mapped_column(String, nullable=False)
     raw_llm_response: Mapped[str | None] = mapped_column(String, nullable=True)
+    llm_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    triage_reasoning: Mapped[str | None] = mapped_column(String, nullable=True)
+    triage_stage: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending_review")
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)

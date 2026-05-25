@@ -208,6 +208,8 @@ class PendingSARResponse(BaseModel):
     flag_details: dict | None = None
     risk_level: str | None = None
     triage_reasoning: str | None = None
+    llm_confidence: float | None = None
+    triage_stage: str | None = None
     enrichment: dict | None = None
     rule_name: str | None = None
     rule_description: str | None = None

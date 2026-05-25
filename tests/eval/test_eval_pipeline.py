@@ -198,6 +198,19 @@ class TestEvalPipeline:
         for sar in sars:
             txn = txn_by_id.get(sar.transaction_id)
             assert txn is not None, f"Transaction {sar.transaction_id} not found for SAR {sar.id}"
+
+            # Collect other same-customer transactions — the LLM prompt includes
+            # these as context, so amounts from related transactions are legitimate
+            related_txns = [
+                {
+                    "source_txn_id": rt.source_txn_id,
+                    "amount": rt.amount,
+                    "counterparty": rt.counterparty,
+                }
+                for rt in txns
+                if rt.id != sar.transaction_id and rt.customer_id == txn.customer_id
+            ]
+
             txn_dict = {
                 "source_txn_id": txn.source_txn_id,
                 "account_id": txn.account_id,
@@ -209,6 +222,7 @@ class TestEvalPipeline:
             hl = await check_hallucination(
                 sar.id, sar.transaction_id, sar.content, txn_dict,
                 flag_by_txn.get(sar.transaction_id),
+                related_transactions=related_txns,
             )
             assert hl.passed, f"SAR {sar.id}: hallucinated facts: {hl.hallucinated_facts}"
 

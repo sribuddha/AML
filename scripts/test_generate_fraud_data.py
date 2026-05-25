@@ -189,7 +189,7 @@ async def generate(count: int, output: str, manifest_output: str, seed_rules: bo
     manifest: dict[str, str] = {}
 
     # ── Clean transactions (~98% of total) ──────────────────────
-    clean_count = int(count * 0.98)
+    clean_count = count if count < 25 else int(count * 0.98)
     for i in range(clean_count):
         acct_id, cust_id = random.choice(accounts)
         row = _clean_row(acct_id, cust_id, _gen_txn_id(), days_ago=random.randint(0, 730))
@@ -197,13 +197,26 @@ async def generate(count: int, output: str, manifest_output: str, seed_rules: bo
         all_rows.append(row)
 
     # ── Fraud patterns (~2% of total) ───────────────────────────
-    pattern_generators = [
-        ("structuring", generate_structuring_set, 6),
-        ("velocity", generate_velocity_set, 5),
-        ("impossible_travel", generate_impossible_travel_pair, 5),
-        ("round_trip", generate_round_trip_pair, 5),
-        ("watchlist", generate_watchlist_row, 8),
-    ]
+    # Scale pattern instances so total output ≈ count.
+    # Baseline: at count=10000, instances are 6,5,5,5,8 producing ~84 fraud rows.
+    pattern_base = [6, 5, 5, 5, 8]
+    scale = count / 10000
+    pattern_instances = [max(0, round(b * scale)) for b in pattern_base]
+
+    # For medium datasets (count 25-999), ensure at least 1 fraud row
+    if count >= 25 and sum(pattern_instances) == 0:
+        pattern_instances[-1] = 1  # watchlist (1 row per instance)
+
+    pattern_generators = []
+    for name, gen, inst in [
+        ("structuring", generate_structuring_set, pattern_instances[0]),
+        ("velocity", generate_velocity_set, pattern_instances[1]),
+        ("impossible_travel", generate_impossible_travel_pair, pattern_instances[2]),
+        ("round_trip", generate_round_trip_pair, pattern_instances[3]),
+        ("watchlist", generate_watchlist_row, pattern_instances[4]),
+    ]:
+        if inst > 0:
+            pattern_generators.append((name, gen, inst))
 
     for pattern_name, generator, instances in pattern_generators:
         for _ in range(instances):
@@ -221,12 +234,15 @@ async def generate(count: int, output: str, manifest_output: str, seed_rules: bo
     # ── Shuffle all rows ────────────────────────────────────────
     random.shuffle(all_rows)
 
-    # ── Write CSV ───────────────────────────────────────────────
+    # ── Write CSV (append if exists, like stage generators) ─────
     fieldnames = ["account_id", "customer_id", "amount", "counterparty", "location", "date", "source_txn_id"]
     import csv
-    with open(output, "w", newline="") as f:
+    output_path = Path(output)
+    write_header = not output_path.exists()
+    with open(output, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
+        if write_header:
+            writer.writeheader()
         for row in all_rows:
             out_row = {k: row[k] for k in fieldnames}
             writer.writerow(out_row)

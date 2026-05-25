@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock
+
 import pytest
 
 from src.aml_workflow.llm import LLMClient, TriageDecision, SarResult
@@ -225,7 +227,7 @@ class TestGeminiHappyPath:
         mock_resp = MagicMock()
         mock_resp.text = '{"escalate": true, "reason": "High risk flagged", "confidence": 0.88}'
         c._gemini_client = MagicMock()
-        c._gemini_client.models.generate_content.return_value = mock_resp
+        c._gemini_client.aio.models.generate_content = AsyncMock(return_value=mock_resp)
         return c
 
     async def test_triage_returns_decision(self, gemini_client):
@@ -234,14 +236,14 @@ class TestGeminiHappyPath:
         assert result.escalate is True
         assert result.reason == "High risk flagged"
         assert result.confidence == 0.88
-        assert gemini_client._gemini_client.models.generate_content.called
+        assert gemini_client._gemini_client.aio.models.generate_content.called
 
     async def test_stage3_returns_decision(self, gemini_client):
         result = await gemini_client.triage_stage3(_TXN, _FLAG, [])
         assert isinstance(result, TriageDecision)
         assert result.escalate is True
         assert result.reason == "High risk flagged"
-        assert gemini_client._gemini_client.models.generate_content.called
+        assert gemini_client._gemini_client.aio.models.generate_content.called
 
     async def test_sar_returns_string(self, gemini_client):
         triage = TriageDecision(escalate=True, reason="Over 50k", confidence=0.9)
@@ -249,7 +251,7 @@ class TestGeminiHappyPath:
         assert isinstance(result, SarResult)
         assert result.content == '{"escalate": true, "reason": "High risk flagged", "confidence": 0.88}'
         assert result.raw_response == '{"escalate": true, "reason": "High risk flagged", "confidence": 0.88}'
-        assert gemini_client._gemini_client.models.generate_content.called
+        assert gemini_client._gemini_client.aio.models.generate_content.called
 
 
 class TestGeminiFallback:
@@ -261,7 +263,7 @@ class TestGeminiFallback:
         from unittest.mock import MagicMock
         c = LLMClient()
         c._gemini_client = MagicMock()
-        c._gemini_client.models.generate_content.side_effect = Exception("API error")
+        c._gemini_client.aio.models.generate_content.side_effect = Exception("API error")
         return c
 
     async def test_triage_fallback_on_error(self, gemini_client_fails):

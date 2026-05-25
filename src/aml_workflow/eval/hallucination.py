@@ -35,6 +35,7 @@ def _extract_entities(text: str) -> set[str]:
 def _build_evidence_set(
     transaction: dict[str, Any],
     flag_details: dict[str, str] | None,
+    related_transactions: list[dict[str, Any]] | None = None,
 ) -> set[str]:
     """Build the set of ground-truth values the SAR should contain."""
     evidence = set()
@@ -44,9 +45,21 @@ def _build_evidence_set(
             if isinstance(value, (int, float)):
                 evidence.add(f"{value:.2f}")
                 evidence.add(f"{value:,.2f}")
+                evidence.add(f"{value:.0f}")
+                evidence.add(f"{value:,.0f}")
     if flag_details:
         for name in flag_details.values():
             evidence.add(name)
+    if related_transactions:
+        for rel in related_transactions:
+            for key, value in rel.items():
+                if value is not None:
+                    evidence.add(str(value))
+                    if isinstance(value, (int, float)):
+                        evidence.add(f"{value:.2f}")
+                        evidence.add(f"{value:,.2f}")
+                        evidence.add(f"{value:.0f}")
+                        evidence.add(f"{value:,.0f}")
     return evidence
 
 
@@ -56,10 +69,11 @@ async def check_sar(
     narrative: str,
     transaction: dict[str, Any],
     flag_details: dict[str, str] | None,
+    related_transactions: list[dict[str, Any]] | None = None,
 ) -> HallucinationResult:
     """Check a single SAR narrative for hallucinated facts."""
     narrative_numbers = _extract_numbers(narrative)
-    evidence_numbers = _build_evidence_set(transaction, flag_details)
+    evidence_numbers = _build_evidence_set(transaction, flag_details, related_transactions)
 
     hallucinated = []
     for num in sorted(narrative_numbers):

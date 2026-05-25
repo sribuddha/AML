@@ -156,7 +156,7 @@ class TestGeminiTriage:
         c = _make_gemini_client()
         mock_resp = MagicMock()
         mock_resp.text = self._TRIAGE_RESP
-        c._gemini_client.models.generate_content = MagicMock(return_value=mock_resp)
+        c._gemini_client.aio.models.generate_content = AsyncMock(return_value=mock_resp)
 
         result = await c._triage_gemini(_TXN, _FLAG)
         assert isinstance(result, TriageDecision)
@@ -166,7 +166,7 @@ class TestGeminiTriage:
 
     async def test_triage_gemini_fallback_on_error(self):
         c = _make_gemini_client()
-        c._gemini_client.models.generate_content = MagicMock(side_effect=Exception("API error"))
+        c._gemini_client.aio.models.generate_content = AsyncMock(side_effect=Exception("API error"))
 
         result = await c._triage_gemini(_TXN, _FLAG)
         assert isinstance(result, TriageDecision)
@@ -181,7 +181,7 @@ class TestGeminiTriageStage3:
         c = _make_gemini_client()
         mock_resp = MagicMock()
         mock_resp.text = self._TRIAGE_RESP
-        c._gemini_client.models.generate_content = MagicMock(return_value=mock_resp)
+        c._gemini_client.aio.models.generate_content = AsyncMock(return_value=mock_resp)
 
         result = await c._triage_stage3_gemini(_TXN, _FLAG, [])
         assert isinstance(result, TriageDecision)
@@ -190,7 +190,7 @@ class TestGeminiTriageStage3:
 
     async def test_stage3_gemini_fallback_on_error(self):
         c = _make_gemini_client()
-        c._gemini_client.models.generate_content = MagicMock(side_effect=Exception("API error"))
+        c._gemini_client.aio.models.generate_content = AsyncMock(side_effect=Exception("API error"))
 
         result = await c._triage_stage3_gemini(_TXN, _FLAG, [])
         assert isinstance(result, TriageDecision)
@@ -202,7 +202,7 @@ class TestGeminiSar:
         c = _make_gemini_client()
         mock_resp = MagicMock()
         mock_resp.text = "Gemini generated SAR report"
-        c._gemini_client.models.generate_content = MagicMock(return_value=mock_resp)
+        c._gemini_client.aio.models.generate_content = AsyncMock(return_value=mock_resp)
 
         triage = TriageDecision(escalate=True, reason="High risk", confidence=0.9)
         result = await c._sar_gemini(_TXN, _FLAG, triage)
@@ -212,7 +212,7 @@ class TestGeminiSar:
 
     async def test_sar_gemini_fallback_on_error(self):
         c = _make_gemini_client()
-        c._gemini_client.models.generate_content = MagicMock(side_effect=Exception("API error"))
+        c._gemini_client.aio.models.generate_content = AsyncMock(side_effect=Exception("API error"))
 
         triage = TriageDecision(escalate=True, reason="High risk", confidence=0.9)
         result = await c._sar_gemini(_TXN, _FLAG, triage)

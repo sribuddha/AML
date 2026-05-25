@@ -19,21 +19,35 @@ from src.aml_workflow.models.validation_result import ValidationResult
 from src.file_processor.models import Transaction, UploadedFiles
 
 
+def _make_batch_triage(td: TriageDecision):
+    async def batch_fn(*args, **kwargs):
+        txns = args[1] if len(args) > 1 else kwargs.get("transactions", [])
+        return [td for _ in txns]
+    return batch_fn
+
+
+def _make_batch_sar(sr: SarResult):
+    async def batch_fn(*args, **kwargs):
+        txns = args[1] if len(args) > 1 else kwargs.get("transactions", [])
+        return [sr for _ in txns]
+    return batch_fn
+
+
 @pytest.fixture
 def mock_llm_escalate():
     m = AsyncMock()
-    m.triage.return_value = TriageDecision(escalate=True, reason="High value offshore", confidence=0.9)
-    m.triage_stage3.return_value = TriageDecision(escalate=True, reason="Deep-dive confirms risk", confidence=0.85)
-    m.generate_sar.return_value = SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')
+    m.triage_batch.side_effect = _make_batch_triage(TriageDecision(escalate=True, reason="High value offshore", confidence=0.9))
+    m.triage_stage3_batch.side_effect = _make_batch_triage(TriageDecision(escalate=True, reason="Deep-dive confirms risk", confidence=0.85))
+    m.generate_sar_batch.side_effect = _make_batch_sar(SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}'))
     return m
 
 
 @pytest.fixture
 def mock_llm_clear():
     m = AsyncMock()
-    m.triage.return_value = TriageDecision(escalate=False, reason="Routine amount", confidence=0.6)
-    m.triage_stage3.return_value = TriageDecision(escalate=False, reason="No pattern found", confidence=0.3)
-    m.generate_sar.return_value = SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')
+    m.triage_batch.side_effect = _make_batch_triage(TriageDecision(escalate=False, reason="Routine amount", confidence=0.6))
+    m.triage_stage3_batch.side_effect = _make_batch_triage(TriageDecision(escalate=False, reason="No pattern found", confidence=0.3))
+    m.generate_sar_batch.side_effect = _make_batch_sar(SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}'))
     return m
 
 
@@ -41,9 +55,9 @@ def mock_llm_clear():
 def mock_llm_stage3_clear():
     """Stage 2 escalates, Stage 3 reverses."""
     m = AsyncMock()
-    m.triage.return_value = TriageDecision(escalate=True, reason="High value offshore", confidence=0.9)
-    m.triage_stage3.return_value = TriageDecision(escalate=False, reason="Deep-dive found no pattern", confidence=0.3)
-    m.generate_sar.return_value = SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')
+    m.triage_batch.side_effect = _make_batch_triage(TriageDecision(escalate=True, reason="High value offshore", confidence=0.9))
+    m.triage_stage3_batch.side_effect = _make_batch_triage(TriageDecision(escalate=False, reason="Deep-dive found no pattern", confidence=0.3))
+    m.generate_sar_batch.side_effect = _make_batch_sar(SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}'))
     return m
 
 
@@ -189,7 +203,7 @@ class TestStage3Scenarios:
         workflow = create_workflow(seeded_session, mock_llm_clear, mode="full")
         state = await workflow.ainvoke({"upload_id": upload_id})
 
-        assert not mock_llm_clear.triage_stage3.called
+        assert not mock_llm_clear.triage_stage3_batch.called
         for txn_id, result in state["triage_results"].items():
             assert result["risk_level"] == "auto_reviewed"
 
@@ -203,7 +217,8 @@ class TestStage3Scenarios:
         workflow = create_workflow(seeded_session, mock_llm_escalate, mode="full")
         await workflow.ainvoke({"upload_id": upload_id})
 
-        args, kwargs = mock_llm_escalate.triage.call_args
-        enriched_ctx = kwargs.get("enriched_context")
-        assert enriched_ctx is not None
-        assert enriched_ctx["customer_txn_count_30d"] == 1
+        args, kwargs = mock_llm_escalate.triage_batch.call_args
+        enriched_list = kwargs.get("enriched_context_list")
+        assert enriched_list is not None
+        assert len(enriched_list) > 0
+        assert enriched_list[0]["customer_txn_count_30d"] == 1

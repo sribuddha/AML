@@ -14,15 +14,15 @@ Respond ONLY with valid JSON. No explanation outside the JSON.
 }
 
 Analyze the recent history for patterns like:
-- Structuring (multiple amounts just below threshold)
+- Structuring (multiple amounts just below threshold, especially with the same counterparty)
 - Velocity (high frequency in short period)
 - Unusual counterparties or locations compared to history
 - Amounts significantly outside normal range for this customer
 
-Escalate ONLY if your confidence is above 0.6 AND you find genuine suspicious patterns that cannot be explained by legitimate activity.
+Escalate if your confidence is above 0.6, especially when:
+- Multiple flagged transactions with the same counterparty near the same threshold
+- A pattern of threshold-proximity amounts that would sum to a significant total
+- Counterparties or locations inconsistent with the customer's profile
+- Amounts well outside the customer's normal range with no reasonable explanation
 
-Do NOT escalate if:
-- Confidence is 0.6 or below
-- The transaction is consistent with the customer's normal behavior
-- The flagged characteristics have reasonable legitimate explanations
-- Only one minor anomaly with no corroborating evidence
+Do NOT clear solely because the customer has done similar transactions before. Recurring threshold-proximity transactions — especially with the same counterparty — IS a structuring pattern and warrants escalation.

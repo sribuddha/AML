@@ -36,6 +36,8 @@ const mockSar: PendingSAR = {
   flag_details: { r1: "High Value Check" },
   risk_level: "high",
   triage_reasoning: "Suspicious pattern",
+  llm_confidence: null,
+  triage_stage: null,
   enrichment: null,
   rule_name: "High Value Check",
   rule_description: "Flags transactions over $10k",

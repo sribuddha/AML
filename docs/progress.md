@@ -172,6 +172,11 @@
 - `astream()` replaces `ainvoke()` for real-time node progress
 - LLM token streaming during SAR generation (requires UI)
 
+### Phase 9 — Eval file priority fix
+- Upload route now prefers `.manifest.json` over `.eval` — synthetic generator produces `FRAUD_` IDs in the manifest that match DB transactions, while stage generators produce `ST1_`/`ST2_` IDs that don't match
+- Existing upload `5c9f3789` fixed: eval file corrected from `.eval` to `.manifest.json`
+- Eval hallucination check now passes `related_transactions` to avoid flagging amounts from same-customer transactions as hallucinated
+
 ## Testing Conventions
 
 - **Directory structure:** `tests/{unit,e2e}/{bff,aml,file,ui}/` organized by domain × type; `tests/eval/` stays flat
@@ -257,13 +262,28 @@
 - **"View all pending reviews"**: Shown as a link below the green checkmark in completed state when `customerUrlId` is set — navigates to `/compliance` (clears customer filter).
 - Tests: all 19 CompliancePage tests pass, build clean.
 
-### Phase 8 — Raw LLM Response Capture (in progress)
+### Phase 8 — LLM Confidence Pipeline, Batching & Logging (✅ Done)
+- **SAR LLM fields**: Migration `015_sar_llm_fields.py` adds `llm_confidence`, `triage_reasoning`, `triage_stage` to `sar` table; piped from triage nodes through to SAR records and displayed in ReviewCard UI (confidence %, stage badge, reasoning section)
+- **LLM logging**: `import logging` + `logger` in `llm.py` with warnings on missing API keys, errors on all OpenAI/Gemini exception handlers (both per-item and batch paths)
+- **Batch LLM calls**: 6 env vars (`AML_STAGE2_BATCH_SIZE=25`, `AML_STAGE3_BATCH_SIZE=5`, `AML_SAR_BATCH_SIZE=5`, concurrency=1 per stage). Batch methods (`triage_batch`, `triage_stage3_batch`, `generate_sar_batch`) with chunking + semaphore, OpenAI/Gemini structured output schemas, `source_txn_id` cross-matching parsers
+- **Graph node batching**: `stage2_triage`, `stage3_triage`, `sar_node` collect all items and call batch methods; stage3 uses single `WHERE customer_id IN (...)` query
+- **Info logs per LLM call**: `logger.info(...)` at all 12 API call sites (6 batch + 6 individual) logging model name and transaction count/ID
+- **Provider switch**: Migrated from Gemini free tier to OpenAI GPT-4.1-nano (configurable via `.env`); `gpt-4.1-nano` is the cheapest GPT model ($0.10/$0.40 per MTok, deprecating Oct 2026)
+- **SAR hyperlinks in UI**: Transaction links (Txn/Acct/Cust) moved from standalone section into SAR Report container — tagged under the report heading
+- **Dependency fix**: `openai` and `google-genai` added to `pyproject.toml` via `uv add`
+- **Bug fix**: `source_txn_id` popped from LLM response dict before unpacking into `TriageDecision(**d)` to avoid unexpected keyword argument error
+- **Current totals**: 196 backend unit tests, 85 e2e, 272 frontend tests — all passing
 
 ### Phase 7 — Eval Harness + Improvements (in progress)
 - Calibration check (confidence vs actual accuracy across deciles)
 - Two-stage triage filter (cheap Stage 1, expensive Stage 2) — ✅ Done
 - Per-transaction audit log — ✅ Done
 - Workflow mode (stage1 / stage2 / full) — hardcoded in `triggers.py`; controls whether LLM is used for triage and SAR generation
+
+### Phase 9 — Batch API + Cost Optimization (planned)
+- Switch from synchronous per-chunk calls to OpenAI Batch API endpoint (50% cost reduction, async 24h turnaround)
+- Model fallback chain: gpt-4.1-nano → gpt-4o-mini → fallback template (graceful degradation)
+- Per-stage model overrides (cheap triage, better SAR)
 
 ### Nice to Have / Future (deferred to v2)
 - File content dedup via SHA256

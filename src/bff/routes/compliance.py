@@ -93,6 +93,8 @@ async def list_pending_sars(
                 customer_last_name=customer.last_name if customer is not None else None,
                 sar_content=sar.content,
                 sar_status=sar.status,
+                llm_confidence=sar.llm_confidence,
+                triage_stage=sar.triage_stage,
                 created_at=sar.created_at,
             )
         )

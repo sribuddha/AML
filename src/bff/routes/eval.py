@@ -21,6 +21,11 @@ def _load_eval_entries(eval_path: str) -> list[dict]:
     path = Path(eval_path)
     if not path.exists():
         return []
+    if eval_path.endswith(".manifest.json"):
+        with open(path) as f:
+            obj = json.load(f)
+        return [{"source_txn_id": txn_id, "scenario": label, "expected_escalate": True}
+                for txn_id, label in obj.items()]
     entries: list[dict] = []
     with open(path) as f:
         for line in f:
@@ -69,24 +74,25 @@ async def evaluate_upload(
     # Compute pattern metrics
     pattern_groups: dict[str, dict] = {}
     flagged_total = 0
-    anomalous_total = len(eval_entries)
 
     for src_id, exp in expected.items():
         pattern = exp.get("scenario", "unknown")
         if pattern not in pattern_groups:
             pattern_groups[pattern] = {"total": 0, "flagged": 0}
 
-        pattern_groups[pattern]["total"] += 1
-
         txn = txn_map.get(src_id)
         if txn is None:
             continue
+        pattern_groups[pattern]["total"] += 1
+
         vr = vr_map.get(txn.id)
         if vr is None:
             continue
         if vr.risk_level == "high":
             pattern_groups[pattern]["flagged"] += 1
             flagged_total += 1
+
+    anomalous_total = sum(g["total"] for g in pattern_groups.values())
 
     pattern_metrics = []
     for pattern, counts in sorted(pattern_groups.items()):
@@ -111,6 +117,14 @@ async def evaluate_upload(
         if vr and vr.flag_details:
             if isinstance(vr.flag_details, dict):
                 flag_dict = {str(k): str(v) for k, v in vr.flag_details.items()}
+
+        # Collect related customer transactions for legitimate context
+        related_txns = [
+            {"source_txn_id": rt.source_txn_id, "amount": rt.amount, "counterparty": rt.counterparty}
+            for rt in transactions
+            if rt.id != sar.transaction_id and rt.customer_id == txn.customer_id
+        ]
+
         txn_dict = {
             "source_txn_id": txn.source_txn_id,
             "account_id": txn.account_id,
@@ -128,6 +142,7 @@ async def evaluate_upload(
             narrative=sar.content,
             transaction=txn_dict,
             flag_details=flag_dict,
+            related_transactions=related_txns,
         )
         hallucination_results.append({
             "sar_id": result.sar_id,

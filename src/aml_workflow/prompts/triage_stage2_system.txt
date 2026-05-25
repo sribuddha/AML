@@ -13,8 +13,7 @@ Respond ONLY with valid JSON. No explanation outside the JSON.
 }
 
 Escalate if:
-- Any deterministic rule triggered
-- Confidence is at least 0.3
+- Any deterministic rule triggered (set escalate to true regardless of confidence)
 
 Do NOT escalate if:
-- Confidence is below 0.3
+- No rules triggered and confidence below 0.3

@@ -15,18 +15,21 @@ from tests.helpers import upload_csv
 
 @pytest.fixture(autouse=True)
 def mock_llm(monkeypatch):
-    async def mock_triage(*args, **kwargs):
-        return TriageDecision(escalate=True, reason="E2E mock escalation", confidence=0.9)
+    async def mock_triage_batch(*args, **kwargs):
+        txns = args[1] if len(args) > 1 else kwargs.get("transactions", [])
+        return [TriageDecision(escalate=True, reason="E2E escalation", confidence=0.9) for _ in txns]
 
-    async def mock_stage3(*args, **kwargs):
-        return TriageDecision(escalate=True, reason="E2E stage3 confirms", confidence=0.95)
+    async def mock_stage3_batch(*args, **kwargs):
+        txns = args[1] if len(args) > 1 else kwargs.get("transactions", [])
+        return [TriageDecision(escalate=True, reason="E2E stage3 confirms", confidence=0.95) for _ in txns]
 
-    async def mock_sar(*args, **kwargs):
-        return SarResult(content="E2E SAR report", raw_response='{"sar": "e2e"}')
+    async def mock_sar_batch(*args, **kwargs):
+        txns = args[1] if len(args) > 1 else kwargs.get("transactions", [])
+        return [SarResult(content="E2E SAR report", raw_response='{"sar": "e2e"}') for _ in txns]
 
-    monkeypatch.setattr(LLMClient, "triage", mock_triage)
-    monkeypatch.setattr(LLMClient, "triage_stage3", mock_stage3)
-    monkeypatch.setattr(LLMClient, "generate_sar", mock_sar)
+    monkeypatch.setattr(LLMClient, "triage_batch", mock_triage_batch)
+    monkeypatch.setattr(LLMClient, "triage_stage3_batch", mock_stage3_batch)
+    monkeypatch.setattr(LLMClient, "generate_sar_batch", mock_sar_batch)
 
 
 @pytest.fixture(autouse=True)

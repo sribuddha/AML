@@ -22,6 +22,8 @@ const mockSar: PendingSAR = {
   flag_details: { r1: "High Value Check" },
   risk_level: "high",
   triage_reasoning: "Suspicious pattern",
+  llm_confidence: null,
+  triage_stage: null,
   enrichment: { customer_txn_count_30d: 12, customer_avg_30d: 8000, structuring_24h_count: 3, velocity_zscore: 2.5, dormancy_days: 0, account_type: "Checking" },
   rule_name: "High Value Check",
   rule_description: "Flags transactions over $10k",
@@ -48,6 +50,8 @@ const mockSar2: PendingSAR = {
   flag_details: { r2: "Large Cash" },
   risk_level: "high",
   triage_reasoning: "Unusual pattern",
+  llm_confidence: null,
+  triage_stage: null,
   enrichment: { customer_txn_count_30d: 5, customer_avg_30d: 5000, structuring_24h_count: 0, velocity_zscore: 1.2, dormancy_days: 90, account_type: "Savings" },
   rule_name: "Large Cash",
   rule_description: "Flags large cash transactions",
@@ -285,7 +289,6 @@ describe("CompliancePage", () => {
   });
 
   it("clears customer filter when × chip clicked", async () => {
-    const { ApiError } = await import("../api/client");
     mockGet.mockResolvedValueOnce(mockResponse).mockResolvedValueOnce({ ...mockResponse, items: [], total: 0 });
     renderPage("/compliance?customer_id=CUST001");
     await waitFor(() => {

@@ -16,18 +16,18 @@ from src.file_processor.models import Transaction, UploadedFiles
 @pytest.fixture
 def mock_llm():
     m = AsyncMock()
-    m.triage.return_value = TriageDecision(escalate=True, reason="High value offshore", confidence=0.9)
-    m.triage_stage3.return_value = TriageDecision(escalate=True, reason="Deep-dive confirms risk", confidence=0.85)
-    m.generate_sar.return_value = SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')
+    m.triage_batch.return_value = [TriageDecision(escalate=True, reason="High value offshore", confidence=0.9)]
+    m.triage_stage3_batch.return_value = [TriageDecision(escalate=True, reason="Deep-dive confirms risk", confidence=0.85)]
+    m.generate_sar_batch.return_value = [SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')]
     return m
 
 
 @pytest.fixture
 def mock_llm_no_escalate():
     m = AsyncMock()
-    m.triage.return_value = TriageDecision(escalate=False, reason="Routine amount", confidence=0.6)
-    m.triage_stage3.return_value = TriageDecision(escalate=False, reason="No pattern found", confidence=0.3)
-    m.generate_sar.return_value = SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')
+    m.triage_batch.return_value = [TriageDecision(escalate=False, reason="Routine amount", confidence=0.6)]
+    m.triage_stage3_batch.return_value = [TriageDecision(escalate=False, reason="No pattern found", confidence=0.3)]
+    m.generate_sar_batch.return_value = [SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')]
     return m
 
 
@@ -35,9 +35,9 @@ def mock_llm_no_escalate():
 def mock_llm_escalate_then_clear():
     """Stage 2 escalates, but Stage 3 reverses (deep-dive clears the alert)."""
     m = AsyncMock()
-    m.triage.return_value = TriageDecision(escalate=True, reason="High value offshore", confidence=0.9)
-    m.triage_stage3.return_value = TriageDecision(escalate=False, reason="Deep-dive found no pattern", confidence=0.3)
-    m.generate_sar.return_value = SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')
+    m.triage_batch.return_value = [TriageDecision(escalate=True, reason="High value offshore", confidence=0.9)]
+    m.triage_stage3_batch.return_value = [TriageDecision(escalate=False, reason="Deep-dive found no pattern", confidence=0.3)]
+    m.generate_sar_batch.return_value = [SarResult(content="Suspicious Activity Report body text", raw_response='{"sar": "test"}')]
     return m
 
 
@@ -127,7 +127,7 @@ class TestTriageNode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm)
         state = await workflow.ainvoke({"upload_id": upload_id})
-        assert mock_llm.triage.called
+        assert mock_llm.triage_batch.called
         triage_results = state["triage_results"]
         assert len(triage_results) > 0
         for txn_id, result in triage_results.items():
@@ -154,7 +154,7 @@ class TestTriageNode:
         await seeded_session.commit()
         workflow = create_workflow(seeded_session, mock_llm)
         state = await workflow.ainvoke({"upload_id": upload_id})
-        assert not mock_llm.triage.called
+        assert not mock_llm.triage_batch.called
         assert state["triage_results"] == {}
 
 
@@ -185,9 +185,9 @@ class TestWriteResults:
 
 
 class TestAuditLog:
-    async def test_creates_entity_audit_log_entries(self, seeded_session, seeded_upload):
+    async def test_creates_entity_audit_log_entries(self, seeded_session, seeded_upload, mock_llm):
         upload_id, _, _ = seeded_upload
-        workflow = create_workflow(seeded_session)
+        workflow = create_workflow(seeded_session, mock_llm)
         await workflow.ainvoke({"upload_id": upload_id})
         from src.aml_workflow.models.transaction_status import TransactionStatus
         from src.aml_workflow.models.upload_status import UploadStatus
@@ -324,12 +324,13 @@ class TestEnrichNode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm, mode="stage2")
         await workflow.ainvoke({"upload_id": upload_id})
-        assert mock_llm.triage.called
-        args, kwargs = mock_llm.triage.call_args
-        enriched_ctx = kwargs.get("enriched_context")
-        assert enriched_ctx is not None
-        assert enriched_ctx["customer_txn_count_30d"] == 1
-        assert enriched_ctx["customer_sum_30d"] == 100000.0
+        assert mock_llm.triage_batch.called
+        args, kwargs = mock_llm.triage_batch.call_args
+        enriched_list = kwargs.get("enriched_context_list")
+        assert enriched_list is not None
+        assert len(enriched_list) > 0
+        assert enriched_list[0]["customer_txn_count_30d"] == 1
+        assert enriched_list[0]["customer_sum_30d"] == 100000.0
 
     async def test_enriched_data_empty_when_no_flagged(self, seeded_session, upload_id, mock_llm):
         now = datetime.now(UTC).isoformat()
@@ -371,7 +372,7 @@ class TestEnrichNode:
         await seeded_session.commit()
         workflow = create_workflow(seeded_session, mock_llm, mode="stage2")
         state = await workflow.ainvoke({"upload_id": upload_id})
-        assert not mock_llm.triage.called
+        assert not mock_llm.triage_batch.called
         assert state.get("enriched_data") == {}
 
 
@@ -382,7 +383,7 @@ class TestStage1Mode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm, mode="stage1")
         state = await workflow.ainvoke({"upload_id": upload_id})
-        assert not mock_llm.triage.called
+        assert not mock_llm.triage_batch.called
         for txn_id, result in state["triage_results"].items():
             assert result["risk_level"] == "high"
             assert result["triage_reasoning"] is not None
@@ -408,8 +409,8 @@ class TestStage2Mode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm, mode="stage2")
         await workflow.ainvoke({"upload_id": upload_id})
-        assert mock_llm.triage.called
-        triage_data = list(mock_llm.triage.call_args)
+        assert mock_llm.triage_batch.called
+        triage_data = list(mock_llm.triage_batch.call_args)
         assert triage_data is not None
 
     async def test_sar_uses_placeholder_despite_mock_content(self, seeded_session, seeded_upload, mock_llm):
@@ -448,7 +449,7 @@ class TestFullMode:
         assert len(sars) > 0
         for sar in sars:
             assert sar.content == "Suspicious Activity Report body text"
-        assert mock_llm.generate_sar.called
+        assert mock_llm.generate_sar_batch.called
 
 
 class TestStage3Mode:
@@ -461,8 +462,8 @@ class TestStage3Mode:
         # Stage 2 escalates (high), Stage 3 reverses (auto_reviewed)
         for txn_id, result in state["triage_results"].items():
             assert result["risk_level"] == "auto_reviewed"
-        assert mock_llm_escalate_then_clear.triage.called
-        assert mock_llm_escalate_then_clear.triage_stage3.called
+        assert mock_llm_escalate_then_clear.triage_batch.called
+        assert mock_llm_escalate_then_clear.triage_stage3_batch.called
 
     async def test_stage3_no_sar_when_cleared(self, seeded_session, seeded_upload, mock_llm_escalate_then_clear):
         upload_id, _, _ = seeded_upload
@@ -480,7 +481,7 @@ class TestStage3Mode:
         workflow = create_workflow(seeded_session, mock_llm_no_escalate, mode="full")
         state = await workflow.ainvoke({"upload_id": upload_id})
         # Stage 2 does not escalate, so Stage 3 is skipped entirely
-        assert not mock_llm_no_escalate.triage_stage3.called
+        assert not mock_llm_no_escalate.triage_stage3_batch.called
         for txn_id, result in state["triage_results"].items():
             assert result["risk_level"] == "auto_reviewed"
 
@@ -575,7 +576,7 @@ class TestNodeRetryFailure:
     async def test_permanent_failure_no_retry_and_propagates(self, seeded_session, seeded_upload, mock_llm):
         from src.aml_workflow.triggers import run_validation
         upload_id, _, _ = seeded_upload
-        mock_llm.triage.side_effect = ValueError("LLM not available")
+        mock_llm.triage_batch.side_effect = ValueError("LLM not available")
         with pytest.raises(ValueError, match="LLM not available"):
             await run_validation(upload_id, seeded_session, llm=mock_llm, mode="stage2")
         from src.file_processor.models import UploadedFiles
@@ -591,9 +592,9 @@ class TestNodeRetryFailure:
             call_count += 1
             if call_count == 1:
                 raise TimeoutError("LLM timed out")
-            return TriageDecision(escalate=False, reason="Recovered", confidence=0.6)
+            return [TriageDecision(escalate=False, reason="Recovered", confidence=0.6)]
 
-        mock_llm_no_escalate.triage.side_effect = triage_with_retry
+        mock_llm_no_escalate.triage_batch.side_effect = triage_with_retry
         workflow = create_workflow(seeded_session, mock_llm_no_escalate, mode="stage2")
         state = await workflow.ainvoke({"upload_id": upload_id})
         assert call_count == 2

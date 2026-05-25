@@ -1,4 +1,5 @@
 import asyncio
+import json
 import uuid
 from io import BytesIO
 from pathlib import Path
@@ -126,10 +127,20 @@ async def upload_from_work(
 
     result = await process_upload(df, safe_name, upload_id, db, content)
 
-    # Copy .eval or .manifest.json file if it exists alongside the CSV
-    eval_path = file_path.with_suffix(".eval")
-    if not eval_path.exists():
-        eval_path = file_path.with_suffix(".manifest.json")
+    # Copy .manifest.json (preferred when non-empty) or .eval file
+    # .manifest.json has correct FRAUD_ IDs from the synthetic generator;
+    # .eval has ST1_/ST2_ IDs from stage generators that may not match DB rows.
+    eval_path = file_path.with_suffix(".manifest.json")
+    if eval_path.exists():
+        # Only prefer manifest if it has entries (not empty)
+        try:
+            manifest_data = json.loads(eval_path.read_bytes())
+            if not manifest_data:
+                eval_path = file_path.with_suffix(".eval")
+        except (json.JSONDecodeError, OSError):
+            eval_path = file_path.with_suffix(".eval")
+    else:
+        eval_path = file_path.with_suffix(".eval")
     if eval_path.exists():
         from sqlalchemy import update as sa_update
         from src.file_processor.models import UploadedFiles

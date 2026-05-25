@@ -9,6 +9,24 @@ interface ReviewCardProps {
   reviewing: boolean;
 }
 
+function renderSarContent(text: string) {
+  const lines = text.split("\n");
+  const patterns: { regex: RegExp; to: (val: string) => string }[] = [
+    { regex: /^(Transaction ID:\s*)(.+)$/i, to: (v) => `/transactions?source_txn_id=${encodeURIComponent(v)}` },
+    { regex: /^(Account Number:\s*)(.+)$/i, to: (v) => `/transactions?account_id=${encodeURIComponent(v)}` },
+    { regex: /^(Customer ID:\s*)(.+)$/i, to: (v) => `/compliance?customer_id=${encodeURIComponent(v)}` },
+  ];
+  return lines.map((line, i) => {
+    for (const { regex, to } of patterns) {
+      const m = line.match(regex);
+      if (m) {
+        return <div key={i}>{m[1]}<Link to={to(m[2])} className="text-blue-600 hover:text-blue-800 hover:underline">{m[2]}</Link></div>;
+      }
+    }
+    return <div key={i}>{line || "\u00A0"}</div>;
+  });
+}
+
 export default function ReviewCard({ sar, onReview, reviewing }: ReviewCardProps) {
   const [expanded, setExpanded] = useState(false);
 
@@ -34,6 +52,11 @@ export default function ReviewCard({ sar, onReview, reviewing }: ReviewCardProps
                 "bg-green-100 text-green-700"
               }`}>
                 {sar.risk_level}
+              </span>
+            )}
+            {sar.triage_stage && (
+              <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
+                {sar.triage_stage}
               </span>
             )}
             {sar.customer_id && (
@@ -73,6 +96,24 @@ export default function ReviewCard({ sar, onReview, reviewing }: ReviewCardProps
       {/* Expanded Detail */}
       {expanded && (
         <div className="px-5 py-4 border-t border-slate-100 space-y-4">
+          {/* LLM Confidence */}
+          {sar.llm_confidence !== null && sar.llm_confidence !== undefined && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-700">LLM Confidence:</span>
+              <span className="text-sm text-slate-900 font-semibold">{(sar.llm_confidence * 100).toFixed(0)}%</span>
+            </div>
+          )}
+
+          {/* Triage Reasoning */}
+          {sar.triage_reasoning && (
+            <div>
+              <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Triage Reasoning</h4>
+              <div className="bg-slate-50 rounded-lg p-3 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                {sar.triage_reasoning}
+              </div>
+            </div>
+          )}
+
           {/* Rules triggered */}
           {sar.flag_details && Object.keys(sar.flag_details).length > 0 && (
             <div>
@@ -139,39 +180,11 @@ export default function ReviewCard({ sar, onReview, reviewing }: ReviewCardProps
             );
           })()}
 
-          {/* Transaction Links */}
-          <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-            {sar.source_txn_id && (
-              <Link to={`/transactions?source_txn_id=${encodeURIComponent(sar.source_txn_id)}`}
-                className="text-blue-600 hover:text-blue-800 hover:underline">
-                Txn: {sar.source_txn_id}
-              </Link>
-            )}
-            {sar.account_id && (
-              <Link to={`/transactions?account_id=${encodeURIComponent(sar.account_id)}`}
-                className="text-blue-600 hover:text-blue-800 hover:underline">
-                Acct: {sar.account_id}
-              </Link>
-            )}
-            {sar.customer_id && (
-              <Link to={`/compliance?customer_id=${encodeURIComponent(sar.customer_id)}`}
-                className="text-blue-600 hover:text-blue-800 hover:underline inline-flex items-center gap-1">
-                Cust: {sar.customer_first_name && sar.customer_last_name
-                  ? `${sar.customer_first_name} ${sar.customer_last_name}`
-                  : sar.customer_id}
-                <svg className="w-3 h-3 text-slate-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="6.5" cy="6.5" r="4.5" />
-                  <line x1="10" y1="10" x2="14" y2="14" />
-                </svg>
-              </Link>
-            )}
-          </div>
-
           {/* SAR Narrative */}
           <div>
             <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">SAR Report</h4>
-            <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
-              {sar.sar_content}
+            <div className="bg-slate-50 rounded-lg p-4 text-sm text-slate-700 leading-relaxed">
+              {renderSarContent(sar.sar_content)}
             </div>
           </div>
         </div>

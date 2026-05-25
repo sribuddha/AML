@@ -78,6 +78,8 @@ export interface PendingSAR {
   flag_details: Record<string, string> | null;
   risk_level: string | null;
   triage_reasoning: string | null;
+  llm_confidence: number | null;
+  triage_stage: string | null;
   enrichment: Record<string, unknown> | null;
   rule_name: string | null;
   rule_description: string | null;

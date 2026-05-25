@@ -26,6 +26,8 @@ const baseSar: PendingSAR = {
   flag_details: { rule1: "High Value Check", rule2: "Offshore Location" },
   risk_level: "high",
   triage_reasoning: "Suspicious pattern",
+  llm_confidence: 0.87,
+  triage_stage: "stage2",
   enrichment: {
     customer_txn_count_30d: 12,
     customer_avg_30d: 8000,
@@ -36,7 +38,7 @@ const baseSar: PendingSAR = {
   },
   rule_name: "High Value Check",
   rule_description: "Flags transactions over $10k",
-  sar_content: "This transaction is suspicious because...",
+  sar_content: "Transaction ID: TXN001\nAccount Number: ACC001\nCustomer ID: CUST001\nThis transaction is suspicious because...",
   sar_status: "pending_review",
   created_at: "2026-05-01T00:00:00Z",
 };
@@ -140,7 +142,7 @@ describe("ReviewCard", () => {
   it("renders customer_id link in expanded detail", () => {
     renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
-    const link = screen.getByText("Cust: John Doe");
+    const link = screen.getByText("CUST001");
     expect(link).toBeInTheDocument();
     expect(link.closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
   });
@@ -160,20 +162,59 @@ describe("ReviewCard", () => {
   });
 
   it("shows raw customer_id when customer name missing in header", () => {
-    const sar = { ...baseSar, customer_first_name: undefined, customer_last_name: undefined };
+    const sar: PendingSAR = { ...baseSar, customer_first_name: null, customer_last_name: null };
     renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
-    const link = screen.getByText("CUST001");
-    expect(link).toBeInTheDocument();
-    expect(link.closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
+    const links = screen.getAllByText("CUST001");
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(links[0].closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
   });
 
   it("shows raw customer_id when customer name missing in expanded section", () => {
-    const sar = { ...baseSar, customer_first_name: undefined, customer_last_name: undefined };
+    const sar: PendingSAR = { ...baseSar, customer_first_name: null, customer_last_name: null };
     renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
     fireEvent.click(screen.getByText("TXN001"));
-    const link = screen.getByText("Cust: CUST001");
-    expect(link).toBeInTheDocument();
-    expect(link.closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
+    const links = screen.getAllByText("CUST001");
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(links[0].closest("a")).toHaveAttribute("href", "/compliance?customer_id=CUST001");
+  });
+
+  it("shows LLM confidence as percentage", () => {
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    fireEvent.click(screen.getByText("TXN001"));
+    expect(screen.getByText("LLM Confidence:")).toBeInTheDocument();
+    expect(screen.getByText("87%")).toBeInTheDocument();
+  });
+
+  it("shows triage stage badge", () => {
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    expect(screen.getByText("stage2")).toBeInTheDocument();
+  });
+
+  it("shows triage reasoning in expanded section", () => {
+    renderWithRouter(<ReviewCard sar={baseSar} onReview={async () => {}} reviewing={false} />);
+    fireEvent.click(screen.getByText("TXN001"));
+    expect(screen.getByText("Triage Reasoning")).toBeInTheDocument();
+    expect(screen.getByText("Suspicious pattern")).toBeInTheDocument();
+  });
+
+  it("hides LLM confidence when null", () => {
+    const sar = { ...baseSar, llm_confidence: null };
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    fireEvent.click(screen.getByText("TXN001"));
+    expect(screen.queryByText("LLM Confidence:")).not.toBeInTheDocument();
+  });
+
+  it("hides triage stage when null", () => {
+    const sar = { ...baseSar, triage_stage: null };
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    expect(screen.queryByText("stage2")).not.toBeInTheDocument();
+  });
+
+  it("hides triage reasoning when null", () => {
+    const sar = { ...baseSar, triage_reasoning: null };
+    renderWithRouter(<ReviewCard sar={sar} onReview={async () => {}} reviewing={false} />);
+    fireEvent.click(screen.getByText("TXN001"));
+    expect(screen.queryByText("Triage Reasoning")).not.toBeInTheDocument();
   });
 
   it("does not highlight velocity z-score when <= 2", () => {

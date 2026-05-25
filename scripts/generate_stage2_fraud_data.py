@@ -5,6 +5,7 @@ makes the correct escalation decision. Appends to --output CSV and its .eval
 companion (JSONL)."""
 
 import argparse
+import asyncio
 import csv
 import json
 import random
@@ -13,6 +14,9 @@ from datetime import datetime, UTC, timedelta
 from pathlib import Path
 
 from faker import Faker
+from sqlalchemy import text
+
+from src.bff.database import async_session_factory
 
 fake = Faker()
 
@@ -20,9 +24,6 @@ FIELD_NAMES = [
     "account_id", "customer_id", "amount", "counterparty",
     "location", "date", "source_txn_id",
 ]
-
-ACCOUNT_IDS = [f"ACC{i:03d}" for i in range(1, 51)]
-CUSTOMER_IDS = [f"CUST{i:03d}" for i in range(1, 51)]
 
 SCENARIOS: list[dict] = [
     # (tag, scenario_name, params, expected_escalate, ground_truth_label, reason_hint)
@@ -110,11 +111,12 @@ SCENARIOS: list[dict] = [
 ]
 
 
-def _generate_row(scenario: dict, date: str, index: int) -> dict:
+def _generate_row(scenario: dict, date: str, index: int,
+                  account_ids: list[str], customer_ids: list[str]) -> dict:
     src_id = f"ST2_{scenario['tag']}_{index:03d}"
     return {
-        "account_id": random.choice(ACCOUNT_IDS),
-        "customer_id": random.choice(CUSTOMER_IDS),
+        "account_id": random.choice(account_ids),
+        "customer_id": random.choice(customer_ids),
         "amount": f"{scenario['amount']:.2f}",
         "counterparty": scenario["counterparty"],
         "location": scenario["location"],
@@ -133,7 +135,17 @@ def _eval_entry(scenario: dict, date: str, index: int) -> dict:
     }
 
 
-def generate(count: int, date: str, output: Path):
+async def generate(count: int, date: str, output: Path):
+    async with async_session_factory() as session:
+        acct_result = await session.execute(text("SELECT account_id FROM account"))
+        account_ids = [row[0] for row in acct_result.fetchall()]
+        cust_result = await session.execute(text("SELECT customer_id FROM customer"))
+        customer_ids = [row[0] for row in cust_result.fetchall()]
+
+    if not account_ids or not customer_ids:
+        print("ERROR: No customers or accounts found. Run 'python -m scripts.seed_db' first.")
+        return
+
     output_path = Path(output)
     eval_path = output_path.with_suffix(".eval")
 
@@ -153,7 +165,7 @@ def generate(count: int, date: str, output: Path):
             row_date = date if random.random() < 0.95 else (
                 datetime.fromisoformat(date) - timedelta(days=1)
             ).strftime("%Y-%m-%d")
-            rows.append(_generate_row(scenario, row_date, idx))
+            rows.append(_generate_row(scenario, row_date, idx, account_ids, customer_ids))
             eval_entries.append(_eval_entry(scenario, row_date, idx))
 
     write_header = not output_path.exists()

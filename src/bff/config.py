@@ -21,3 +21,17 @@ OPENAI_API_KEY = os.getenv("AML_OPENAI_API_KEY", "")
 GEMINI_API_KEY = os.getenv("AML_GEMINI_API_KEY", "")
 LLM_MODEL_TRIAGE = os.getenv("AML_LLM_MODEL_TRIAGE", "gpt-4o-mini")
 LLM_MODEL_SAR = os.getenv("AML_LLM_MODEL_SAR", "gpt-4o")
+
+# ── Batch Settings ──────────────────────────────────────────────
+
+STAGE2_BATCH_SIZE = int(os.getenv("AML_STAGE2_BATCH_SIZE", "25"))
+STAGE3_BATCH_SIZE = int(os.getenv("AML_STAGE3_BATCH_SIZE", "5"))
+SAR_BATCH_SIZE = int(os.getenv("AML_SAR_BATCH_SIZE", "5"))
+STAGE2_CONCURRENCY = int(os.getenv("AML_STAGE2_CONCURRENCY", "1"))
+STAGE3_CONCURRENCY = int(os.getenv("AML_STAGE3_CONCURRENCY", "1"))
+SAR_CONCURRENCY = int(os.getenv("AML_SAR_CONCURRENCY", "1"))
+
+# ── Velocity / Structuring Thresholds ─────────────────────────────
+
+VELOCITY_ZSCORE_THRESHOLD = float(os.getenv("AML_VELOCITY_ZSCORE_THRESHOLD", "2.0"))
+STRUCTURING_24H_THRESHOLD = int(os.getenv("AML_STRUCTURING_24H_THRESHOLD", "3"))
