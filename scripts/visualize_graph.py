@@ -18,17 +18,23 @@ def main():
     mermaid = app.get_graph().draw_mermaid()
     print(mermaid)
 
-    out = Path(__file__).resolve().parent / "workflow.mermaid"
-    out.write_text(mermaid)
-    print(f"\nSaved to {out}")
+    out_dir = ROOT / "work"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    md_content = f"```mermaid\n{mermaid}\n```\n"
+    out_md = out_dir / "workflow.md"
+    out_md.write_text(md_content)
+    print(f"\nSaved to {out_md}")
 
     try:
         png = app.get_graph().draw_mermaid_png()
-        png_path = out.with_suffix(".png")
+        png_path = out_md.with_suffix(".png")
         png_path.write_bytes(png)
         print(f"Saved to {png_path}")
     except Exception:
         print("PNG export requires pygraphviz + Graphviz — skipping")
+
+    print(f"\nOutput directory: {out_dir}")
 
 
 if __name__ == "__main__":

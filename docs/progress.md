@@ -212,6 +212,13 @@
 - **AML Monitor title**: Sidebar title links to `/` for easy navigation back to dashboard
 - **TestPage unchecked state**: Removed `opacity-50` / muted text styling; unchecked rows use dashed borders + "tick to add" hint; count inputs stay visible and editable for pre-configuration
 
+### LLM Recall Gap (deferred)
+- The LLM stage2/stage3 triage clears ~50% of rule-flagged transactions, yielding ~50% recall on eval datasets
+- Structuring ($9,800) and offshore patterns (Cayman Islands, "Offshore" counterparty) are the most common false clearances
+- This is **partly by design** (LLM filters over-broad rule matches like legitimate refunds) and **partly a real gap** (the LLM rationalizes away genuine red flags)
+- Prompts were hardened (temperature=0, removed self-circumvention escape hatches, removed "legitimate explanations" loophole, added explicit structuring instruction) but the gap persists
+- Potential next steps: add rule-based hard-block (stage2 auto-escalate for certain patterns), fine-tune prompts further, or add a fourth triage stage focused on structuring/offshore patterns
+
 ### Vitest + Unit Tests (✅ Done)
 - **266 tests across 16 files** — all passing
 - **Coverage: 93.71% statements, 96.27% lines** (component/page coverage)
