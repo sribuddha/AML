@@ -14,6 +14,13 @@ DATABASE_URL = os.getenv("AML_DATABASE_URL", f"sqlite+aiosqlite:///{DATA_DIR / '
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+# ── Observability (Langfuse) ───────────────────────────────────
+
+OBSERVABILITY_PROVIDER = os.getenv("OBSERVABILITY_PROVIDER", "none")
+LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://127.0.0.1:3000")
+LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
+LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+
 # ── LLM Provider ────────────────────────────────────────────────
 
 LLM_PROVIDER = os.getenv("AML_LLM_PROVIDER", "openai")

@@ -27,6 +27,31 @@ cp .env.template .env
 
 Values in `.env` take precedence over defaults but can still be overridden by shell environment variables.
 
+### Observability (Langfuse)
+
+```bash
+# Start Langfuse + Postgres
+docker compose up -d
+
+# Open http://localhost:3000, create account, copy API keys
+# Add to .env:
+#   OBSERVABILITY_PROVIDER=langfuse
+#   LANGFUSE_PUBLIC_KEY=pk-...
+#   LANGFUSE_SECRET_KEY=sk-...
+
+# Install optional dep
+pip install '.[observability]'
+
+# Run workflow as usual — traces appear at http://localhost:3000
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OBSERVABILITY_PROVIDER` | `none` | Backend: `none` or `langfuse` |
+| `LANGFUSE_HOST` | `http://localhost:3000` | Langfuse server URL |
+| `LANGFUSE_PUBLIC_KEY` | `""` | Langfuse public API key |
+| `LANGFUSE_SECRET_KEY` | `""` | Langfuse secret API key |
+
 
 ```bash
 # Create all tables (first time or after schema changes)
@@ -203,7 +228,7 @@ python -m scripts.retry_upload <upload_id>
 python scripts/visualize_graph.py
 ```
 
-Outputs `scripts/workflow.mermaid` (text) and `scripts/workflow.png` (image). The Mermaid file can be pasted into any Mermaid renderer (e.g. https://mermaid.live).
+Outputs `work/workflow.md` (Mermaid in Markdown) and `work/workflow.png` (image). The Markdown file renders directly on GitHub.
 
 ## Run Eval Harness
 

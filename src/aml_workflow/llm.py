@@ -62,7 +62,9 @@ class LLMClient:
     def _init_client(self) -> None:
         if self.provider == "openai" and OPENAI_API_KEY:
             from openai import AsyncOpenAI
-            self._openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+            raw_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+            from src.aml_workflow.observability import wrap_openai_client
+            self._openai_client = wrap_openai_client(raw_client)
         elif self.provider == "gemini" and GEMINI_API_KEY:
             from google import genai
             self._gemini_client = genai.Client(api_key=GEMINI_API_KEY)

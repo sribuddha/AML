@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.aml_workflow.graph import create_workflow
 from src.aml_workflow.llm import LLMClient
+from src.aml_workflow.observability import setup as setup_observability, get_langgraph_callbacks, shutdown as shutdown_observability
 from src.bff.config import DATA_DIR
 from src.bff.logger import logger
 
@@ -35,15 +36,21 @@ async def run_validation(upload_id: str, db: AsyncSession, llm: LLMClient | None
     await db.commit()
 
     try:
+        setup_observability()
+
         async with AsyncSqliteSaver.from_conn_string(str(DATA_DIR / "checkpoints.db")) as checkpointer:
             app = create_workflow(db, llm, mode=effective_mode, checkpointer=checkpointer)
-            config = {"configurable": {"thread_id": upload_id}}
+            callbacks = get_langgraph_callbacks()
+            config: dict = {"configurable": {"thread_id": upload_id}}
+            if callbacks:
+                config["callbacks"] = callbacks
             result = await app.ainvoke({"upload_id": upload_id}, config)
 
             if "__interrupt__" in result:
                 logger.info("Workflow paused for upload %s — awaiting human review", upload_id)
                 return
 
+        shutdown_observability()
         logger.info("Workflow completed for upload %s", upload_id)
         if upload:
             upload.status = "complete"
@@ -56,6 +63,7 @@ async def run_validation(upload_id: str, db: AsyncSession, llm: LLMClient | None
         ))
         await db.commit()
     except Exception as e:
+        shutdown_observability()
         logger.error("Workflow failed for upload %s: %s: %s", upload_id, type(e).__name__, e, exc_info=True)
         if upload:
             upload.status = "failed"
