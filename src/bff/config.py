@@ -32,29 +32,82 @@ def get_database_url() -> str:
 
 # ── Observability (Langfuse) ───────────────────────────────────
 
-OBSERVABILITY_PROVIDER = os.getenv("OBSERVABILITY_PROVIDER", "none")
-LANGFUSE_HOST = os.getenv("LANGFUSE_HOST", "http://127.0.0.1:3000")
-LANGFUSE_PUBLIC_KEY = os.getenv("LANGFUSE_PUBLIC_KEY", "")
-LANGFUSE_SECRET_KEY = os.getenv("LANGFUSE_SECRET_KEY", "")
+def get_observability_provider() -> str:
+    _ensure_loaded()
+    return os.getenv("OBSERVABILITY_PROVIDER", "none")
+
+def get_langfuse_host() -> str:
+    _ensure_loaded()
+    return os.getenv("LANGFUSE_HOST", "http://127.0.0.1:3000")
+
+def get_langfuse_public_key() -> str:
+    _ensure_loaded()
+    return os.getenv("LANGFUSE_PUBLIC_KEY", "")
+
+def get_langfuse_secret_key() -> str:
+    _ensure_loaded()
+    return os.getenv("LANGFUSE_SECRET_KEY", "")
 
 # ── LLM Provider ────────────────────────────────────────────────
 
-LLM_PROVIDER = os.getenv("AML_LLM_PROVIDER", "openai")
-OPENAI_API_KEY = os.getenv("AML_OPENAI_API_KEY", "")
-GEMINI_API_KEY = os.getenv("AML_GEMINI_API_KEY", "")
-LLM_MODEL_TRIAGE = os.getenv("AML_LLM_MODEL_TRIAGE", "gpt-4o-mini")
-LLM_MODEL_SAR = os.getenv("AML_LLM_MODEL_SAR", "gpt-4o")
+def get_llm_provider() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_LLM_PROVIDER", "openai")
+
+def get_openai_api_key() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_OPENAI_API_KEY", "")
+
+def get_gemini_api_key() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_GEMINI_API_KEY", "")
+
+def get_llm_model_triage() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_LLM_MODEL_TRIAGE", "gpt-4o-mini")
+
+def get_llm_model_sar() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_LLM_MODEL_SAR", "gpt-4o")
 
 # ── Batch Settings ──────────────────────────────────────────────
 
-STAGE2_BATCH_SIZE = int(os.getenv("AML_STAGE2_BATCH_SIZE", "25"))
-STAGE3_BATCH_SIZE = int(os.getenv("AML_STAGE3_BATCH_SIZE", "5"))
-SAR_BATCH_SIZE = int(os.getenv("AML_SAR_BATCH_SIZE", "5"))
-STAGE2_CONCURRENCY = int(os.getenv("AML_STAGE2_CONCURRENCY", "1"))
-STAGE3_CONCURRENCY = int(os.getenv("AML_STAGE3_CONCURRENCY", "1"))
-SAR_CONCURRENCY = int(os.getenv("AML_SAR_CONCURRENCY", "1"))
+def get_stage2_batch_size() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_STAGE2_BATCH_SIZE", "25"))
+
+def get_stage3_batch_size() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_STAGE3_BATCH_SIZE", "5"))
+
+def get_sar_batch_size() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_SAR_BATCH_SIZE", "5"))
+
+def get_stage2_concurrency() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_STAGE2_CONCURRENCY", "1"))
+
+def get_stage3_concurrency() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_STAGE3_CONCURRENCY", "1"))
+
+def get_sar_concurrency() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_SAR_CONCURRENCY", "1"))
+
+# ── Batch / Chunk Settings ────────────────────────────────────────
+
+def get_chunk_size() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_CHUNK_SIZE", "10000"))
 
 # ── Velocity / Structuring Thresholds ─────────────────────────────
 
-VELOCITY_ZSCORE_THRESHOLD = float(os.getenv("AML_VELOCITY_ZSCORE_THRESHOLD", "2.0"))
-STRUCTURING_24H_THRESHOLD = int(os.getenv("AML_STRUCTURING_24H_THRESHOLD", "3"))
+def get_velocity_zscore_threshold() -> float:
+    _ensure_loaded()
+    return float(os.getenv("AML_VELOCITY_ZSCORE_THRESHOLD", "2.0"))
+
+def get_structuring_24h_threshold() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_STRUCTURING_24H_THRESHOLD", "3"))

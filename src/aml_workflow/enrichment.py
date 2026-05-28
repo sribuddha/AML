@@ -81,109 +81,134 @@ async def enrich_transactions(
 
     # Collect unique customer_ids from flagged txns
     customer_ids = list({t["customer_id"] for t in flagged if t.get("customer_id")})
+    if not customer_ids:
+        return {}
 
-    # Batch-fetch enrichment data per customer
+    # Precompute customer->accounts map from flagged txns (avoids per-customer queries)
+    flagged_accounts_by_customer: dict[str, set[str]] = {}
+    for t in flagged:
+        cid = t.get("customer_id")
+        aid = t.get("account_id")
+        if cid and aid:
+            flagged_accounts_by_customer.setdefault(cid, set()).add(aid)
+
+    all_account_ids: set[str] = set()
+    for aids in flagged_accounts_by_customer.values():
+        all_account_ids.update(aids)
+
+    # ── Batch query 1: Account profiles ────────────────────────
+    account_rows = await db.execute(
+        select(Account).where(Account.customer_id.in_(customer_ids))
+    )
+    accounts_by_cid: dict[str, Account] = {}
+    for a in account_rows.scalars().all():
+        if a.customer_id not in accounts_by_cid:
+            accounts_by_cid[a.customer_id] = a
+
+    # ── Batch query 2: Dormancy (last txn date per account) ────
+    last_txn_by_account: dict[str, str] = {}
+    if all_account_ids:
+        last_txn_rows = await db.execute(
+            select(Transaction.account_id, func.max(Transaction.date))
+            .where(Transaction.account_id.in_(list(all_account_ids)))
+            .group_by(Transaction.account_id)
+        )
+        last_txn_by_account = dict(last_txn_rows.fetchall())
+
+    # ── Batch query 3: 30-day amounts list per customer ────────
+    thirty_days_ago = (ref_date - timedelta(days=30)).isoformat()
+    window_end = ref_date.isoformat()
+    txn_amount_rows = await db.execute(
+        select(Transaction.customer_id, Transaction.amount)
+        .where(
+            Transaction.customer_id.in_(customer_ids),
+            Transaction.date >= thirty_days_ago,
+            Transaction.date <= window_end,
+        )
+    )
+    amounts_by_customer: dict[str, list[float]] = {}
+    for cid, amt in txn_amount_rows:
+        if cid not in amounts_by_customer:
+            amounts_by_customer[cid] = []
+        if amt is not None:
+            amounts_by_customer[cid].append(amt)
+
+    # ── Batch query 4: Structuring 24h per customer ────────────
+    one_day_ago = (ref_date - timedelta(days=1)).isoformat()
+    structuring_rows = await db.execute(
+        select(Transaction.customer_id, func.count())
+        .select_from(Transaction)
+        .where(
+            Transaction.customer_id.in_(customer_ids),
+            Transaction.amount >= 9000,
+            Transaction.amount <= 10000,
+            Transaction.date >= one_day_ago,
+            Transaction.date <= window_end,
+        )
+        .group_by(Transaction.customer_id)
+    )
+    structuring_counts = dict(structuring_rows.fetchall())
+
+    # ── Batch query 5: Velocity data (dates for this_week + prior_4wk) ──
+    four_weeks_ago = (ref_date - timedelta(days=35)).isoformat()
+    date_rows = await db.execute(
+        select(Transaction.customer_id, Transaction.date)
+        .where(
+            Transaction.customer_id.in_(customer_ids),
+            Transaction.date >= four_weeks_ago,
+            Transaction.date <= window_end,
+        )
+    )
+    dates_by_customer: dict[str, list[str]] = {}
+    for cid, d in date_rows:
+        dates_by_customer.setdefault(cid, []).append(d)
+
+    # ── Assemble results per customer ──────────────────────────
     results: dict[str, dict] = {}
-
     for cid in customer_ids:
         context = EnrichedContext()
 
-        # Customer account profile
-        account_row = await db.execute(
-            select(Account).where(Account.customer_id == cid).limit(1)
-        )
-        account = account_row.scalar_one_or_none()
+        account = accounts_by_cid.get(cid)
         if account:
             context.account_type = account.type
             opened = _parse_date(account.date_opened)
             if opened:
                 context.account_age_days = (ref_date.date() - opened.date()).days
 
-        # Dormancy: days since last txn for any account this customer uses
-        # We need the account_ids for this customer's flagged txns
-        flagged_accounts = list({t["account_id"] for t in flagged
-                                if t.get("customer_id") == cid and t.get("account_id")})
-        if flagged_accounts:
-            last_txn_row = await db.execute(
-                select(func.max(Transaction.date))
-                .where(Transaction.account_id.in_(flagged_accounts))
-            )
-            last_txn = last_txn_row.scalar()
-            last_txn_date = _parse_date(last_txn)
-            if last_txn_date:
-                context.dormancy_days = (ref_date.date() - last_txn_date.date()).days
+        flagged_accounts = flagged_accounts_by_customer.get(cid, set())
+        max_txn_date: str | None = None
+        for aid in flagged_accounts:
+            d = last_txn_by_account.get(aid)
+            if d and (max_txn_date is None or d > max_txn_date):
+                max_txn_date = d
+        last_txn_date = _parse_date(max_txn_date)
+        if last_txn_date:
+            context.dormancy_days = (ref_date.date() - last_txn_date.date()).days
 
-        # 30-day window statistics
-        thirty_days_ago = (ref_date - timedelta(days=30)).isoformat()
-        txn_rows = await db.execute(
-            select(Transaction.amount)
-            .where(
-                Transaction.customer_id == cid,
-                Transaction.date >= thirty_days_ago,
-                Transaction.date <= ref_date.isoformat(),
-            )
-        )
-        amounts = [r[0] for r in txn_rows if r[0] is not None]
+        amounts = amounts_by_customer.get(cid, [])
         if amounts:
             context.customer_txn_count_30d = len(amounts)
             context.customer_sum_30d = sum(amounts)
             context.customer_avg_30d = sum(amounts) / len(amounts)
             context.customer_std_amt_30d = _compute_std(amounts)
 
-        # Structuring 24h: count txns in [$9K, $10K] for same customer
-        one_day_ago = (ref_date - timedelta(days=1)).isoformat()
-        structuring_row = await db.execute(
-            select(func.count())
-            .select_from(Transaction)
-            .where(
-                Transaction.customer_id == cid,
-                Transaction.amount >= 9000,
-                Transaction.amount <= 10000,
-                Transaction.date >= one_day_ago,
-                Transaction.date <= ref_date.isoformat(),
-            )
-        )
-        context.structuring_24h_count = structuring_row.scalar() or 0
+        context.structuring_24h_count = structuring_counts.get(cid, 0) or 0
 
-        # Velocity z-score: this week vs prior 4 weeks
-        one_week_ago = (ref_date - timedelta(days=7)).isoformat()
-        four_weeks_ago = (ref_date - timedelta(days=35)).isoformat()
-        week_prior_start = (ref_date - timedelta(days=7)).isoformat()
-        week_prior_end = ref_date.isoformat()
-        four_week_prior_start = (ref_date - timedelta(days=35)).isoformat()
-        four_week_prior_end = (ref_date - timedelta(days=7)).isoformat()
-
-        this_week_row = await db.execute(
-            select(func.count())
-            .select_from(Transaction)
-            .where(
-                Transaction.customer_id == cid,
-                Transaction.date >= one_week_ago,
-                Transaction.date <= ref_date.isoformat(),
-            )
-        )
-        this_week_count = this_week_row.scalar() or 0
-
-        prior_4wk_rows = await db.execute(
-            select(Transaction.date)
-            .where(
-                Transaction.customer_id == cid,
-                Transaction.date >= four_weeks_ago,
-                Transaction.date < one_week_ago,
-            )
-            .order_by(Transaction.date)
-        )
-        prior_dates = prior_4wk_rows.scalars().all()
-
-        # Bucket into 4 weekly bins
+        # Velocity z-score
+        all_dates = dates_by_customer.get(cid, [])
         weekly_counts = [0, 0, 0, 0]
-        for d in prior_dates:
+        this_week_count = 0
+        for d in all_dates:
             dt = _parse_date(d)
             if dt is None:
                 continue
-            weeks_ago = (ref_date - dt).days // 7
-            if 1 <= weeks_ago <= 4:
-                weekly_counts[weeks_ago - 1] += 1
+            days_ago = (ref_date - dt).days
+            if 0 <= days_ago <= 7:
+                this_week_count += 1
+            else:
+                weeks_ago = days_ago // 7
+                if 1 <= weeks_ago <= 4:
+                    weekly_counts[weeks_ago - 1] += 1
 
         avg_weekly = sum(weekly_counts) / max(len(weekly_counts), 1)
         if avg_weekly > 0 and this_week_count > 0:
@@ -191,7 +216,6 @@ async def enrich_transactions(
             std_weekly = math.sqrt(variance) if variance > 0 else 1.0
             context.velocity_zscore = (this_week_count - avg_weekly) / max(std_weekly, 1.0)
 
-        # Serialize to dict
         results[cid] = {
             "customer_txn_count_30d": context.customer_txn_count_30d,
             "customer_sum_30d": context.customer_sum_30d,

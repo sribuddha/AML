@@ -79,7 +79,7 @@
 | Stage2 scenarios | Hardcoded in `scripts/generate_stage2_fraud_data.py` (not read from DB). Covers both escalate and no-escalate cases to test LLM judgment. |
 | `AsyncSqliteSaver` | Replaces `SqliteSaver` for v3.1.0 compatibility (async context manager required for async graphs). |
 | `delete_upload` | Deletes in FK-safe order: ValidationResult, SAR, AuditLog, Transaction, RejectedRecord, chunk rows, parent UploadedFiles — all 7 tables. Also removes both staging and data directories. |
-| `account.location` | Added via Alembic migration `e1c9c714d55d` after model was updated without a corresponding migration. |
+| `account.location` | Removed via migration `013_location_split.py`. Account model lives in `src.core.models.account`. |
 | Account PK | `id` (UUID String(36)) as PK with `default=lambda: str(uuid.uuid4())`; `account_id` is unique but not PK — allows natural key lookup without exposing internal UUID. |
 | Enrichment queries | All use `Transaction` table directly (no aggregation materialised views). Reference date is `max(Transaction.date)` for the current upload. |
 | Enriched context format | Appended as `## Enriched Context` block to existing `triage_user.txt` prompt (same pattern as stage3 appends "Recent customer history"). |
@@ -180,7 +180,7 @@
 ## Testing Conventions
 
 - **Directory structure:** `tests/{unit,e2e}/{bff,aml,file,ui}/` organized by domain × type; `tests/eval/` stays flat
-- **Database:** In-memory SQLite (`sqlite+aiosqlite://`). No Alembic — uses `Base.metadata.create_all` directly. Single session-scoped engine for all tests.
+- **Database:** In-memory SQLite (`sqlite+aiosqlite://`). No Alembic — uses `Base.metadata.create_all` directly (`Base` from `src.core.base`). Single session-scoped engine for all tests.
 - **Fixtures** (`tests/conftest.py`):
   - `engine` (session-scoped) — creates tables on a fresh in-memory DB, disposed after all tests
   - `session` — fresh async session per test, table cleanup on teardown
@@ -197,14 +197,10 @@
 
 ## What's Left
 
-### Minor coverage gaps (92%)
-- `rules.py` at 85% (12 new lines: PATCH endpoint + default status filter)
-- `llm.py` at 97% (lines 55-56, 63, 70, 77: provider detection branches)
-- `read.py` at 92% (lines 135, 148-149, 154-155: rejected record JSON parsing errors)
-- `reprocess.py` at 93% (lines 43-44: heartbeat `ValueError/TypeError`, 51: unknown status)
-- `graph.py` at 96% (9 lines across various error paths)
-- `service.py` at 98% (5 lines: NaN cleanup branches)
-- Target: ≥ 90% per module (already met at 92% overall)
+### Coverage
+- **Current: 94%** (161 uncovered lines) — target ≥90% already met
+- Coverage shifted with graph/LLM refactoring (`nodes.py` 90%, `providers.py` 75% uncovered lines are real API calls in try blocks; `llm.py` 99%, `graph.py` 100%)
+- Remaining uncovered lines: `providers.py` real API call paths (no API keys in tests), `nodes.py` error branches, `validator.py` edge cases, `service.py` NaN paths
 
 ### UI Improvements (✅ Done)
 - **Full-width layout**: Removed `max-w-7xl` constraint from main content area — AML Monitor now spans the full page
@@ -279,7 +275,7 @@
 - **SAR hyperlinks in UI**: Transaction links (Txn/Acct/Cust) moved from standalone section into SAR Report container — tagged under the report heading
 - **Dependency fix**: `openai` and `google-genai` added to `pyproject.toml` via `uv add`
 - **Bug fix**: `source_txn_id` popped from LLM response dict before unpacking into `TriageDecision(**d)` to avoid unexpected keyword argument error
-- **Current totals**: 196 backend unit tests, 85 e2e, 272 frontend tests — all passing
+- **Current totals (pre-core-extraction)**: 196 backend unit tests, 85 e2e, 272 frontend tests — all passing
 
 ### Phase 10 — Architectural Cleanup (✅ Done)
 - **CORS fix**: Removed `allow_credentials=True` (incompatible with `allow_origins=["*"]` per browser spec)
@@ -293,6 +289,43 @@
 - **Eval metric clarity**: Removed misleading `PatternMetrics.accuracy` property (was just an alias for `recall`); documented `_compute_metrics` semantics
 - **Router ordering**: Removed ad-hoc comments — ordering dependency is now documented inline
 - **New file**: `src/aml_workflow/services.py` — status transition service functions
+
+### Phase 10c — Iterations 2–5 (✅ Done)
+- **Status service extraction completed**: All 4 remaining direct `upload.status =` assignments migrated to `_set_upload_status()`: `reprocess.py:46` (→ "uploaded"), `service.py:449` (→ "complete", also fixed typo "completed"→"complete"), `sar.py:78,135` (→ "complete"). Removed `UploadStatus` import from `sar.py`.
+- **N+1 fix in retry_upload**: `select(Transaction.source_txn_id)` hoisted before the per-chunk loop in `retry_upload()` — runs once instead of once per chunk file.
+- **Enrichment N+1 batching**: Refactored `enrich_transactions()` from 6 queries per customer (N×6) to 5 total batch queries: (1) account profiles, (2) dormancy max-dates per account, (3) 30-day amounts per customer, (4) structuring counts per customer, (5) velocity dates per customer. All use `.in_(customer_ids)` / `.group_by()`.
+- **CHUNK_SIZE lazy config**: Moved module-level `CHUNK_SIZE = int(os.environ.get("AML_CHUNK_SIZE", "10000"))` from `service.py` into `config.py` as `get_chunk_size()` — no more `os.environ.get` at import time.
+- **`_is_transient` improved**: Changed `type(e).__name__ in _LIBRARY_TRANSIENT_NAMES` to MRO-aware check (`any(cls.__name__ in _LIBRARY_TRANSIENT_NAMES for cls in type(e).__mro__)`) — catches subclasses of known transient error types.
+- **`except Exception` narrowed in scripts**: `seed_db.py:74` → `SQLAlchemyError` (uninitialized DB check).
+- **457 tests passing, 0 failures** (pre-existing aiosqlite cleanup warning only).
+
+### Phase 10e — Remaining Architectural Fixes (✅ Done)
+- **Fire-and-forget task error logging**: Wrapped both `_trigger_workflow()` closures in `upload.py` with `try/except` + `logger.exception()` — background workflow errors are now logged instead of silently swallowed
+- **`_compute_metrics` parameter clarity**: Renamed `flagged` → `true_positives` in `_compute_metrics(total, true_positives)` to clarify it's a coverage metric (not binary classification); updated docstring to explain precision=1.0 semantics
+
+### Phase 10b — Iteration 1 Follow-up (✅ Done)
+- **`/api/v1` prefix**: All routers in `app.py` now use `prefix="/api/v1"` — consistent API versioning
+- **Config lazy loading completed**: `llm.py` and `graph.py` fully migrated from module-level constants (`LLM_PROVIDER`, `OPENAI_API_KEY`, `VELOCITY_ZSCORE_THRESHOLD`, etc.) to lazy accessor functions (`get_llm_provider()`, `get_openai_api_key()`, `get_velocity_zscore_threshold()`, etc.)
+- **All bare excepts narrowed**: `service.py` (DB flush → `SQLAlchemyError`), `upload.py` (CSV parse → `(pd.errors.ParserError, ValueError)`), `llm.py` individual Gemini methods (API calls → `Exception` with narrow parse errors separated)
+- **Eval `_compute_metrics` repiped**: Now uses explicit `correctly_flagged` parameter — `tp = correctly_flagged`, `fp = flagged - correctly_flagged`, `fn = total - correctly_flagged`; `PatternMetrics.accuracy` renamed to `recall`
+
+### Phase 10d — Graph & LLM Refactoring (✅ Done)
+- **`src/aml_workflow/nodes.py`**: Extracted 8 standalone node functions + 3 routing helpers + `run_node` retry wrapper + `_is_transient` + `_now` from `graph.py`'s `create_workflow()` inner closures. Each function takes `(state, db, llm, mode)` — bound via `functools.partial` in `graph.py`.
+- **`graph.py`** reduced from 629 lines (586 inner closures) to 75 lines — pure graph topology (imports + `StateGraph` wiring).
+- **`src/aml_workflow/providers.py`**: Created `LLMProvider` ABC + `OpenAIProvider`, `GeminiProvider`, `FallbackProvider` — each implements triage/stage3/sar individual + batch methods. Eliminates triple-dispatch if/elif/else pattern.
+- **`llm.py`** reduced from 810 lines (37+ methods) to ~350 lines — all prompt builders, fallbacks, response parsers, and `_chunk` are now module-level functions. `LLMClient` is a thin facade (6 public methods + `_init_provider` + config).
+- **No circular imports**: `providers.py` imports from `llm.py` at top level; `llm.py` imports providers lazily in `_init_provider()`.
+- **Test updates**: `test_llm.py` imports module-level functions directly (no `client._triage_fallback` → `_triage_fallback`). `test_llm_client_openai_gemini.py` creates `OpenAIProvider`/`GeminiProvider` directly with mock clients.
+- **413 non-eval tests pass** (the 44 eval tests have 1 pre-existing LLM hallucination flake).
+
+### Phase 10b — Core Module Extraction (✅ Done)
+- Created `src/core/` package with `base.py`, `schemas.py`, `utils.py`, `observability.py`, and 8 model files (`account`, `customer`, `uploaded_files`, `transaction`, `sar`, `validation_result`, `rule`, `enrichment_snapshot`)
+- `Base` (SQLAlchemy `DeclarativeBase`) moved from `src/bff/database.py` to `src/core/base.py`
+- All Pydantic schemas moved from `src/bff/schemas.py` to `src/core/schemas.py`
+- Observability wrapper moved from `src/aml_workflow/observability.py` to `src/core/observability.py`
+- Deleted old files: `src/bff/models/`, `src/bff/schemas.py`, `src/aml_workflow/models/{sar,validation_result,rule,enrichment_snapshot}.py`, `src/aml_workflow/observability.py`
+- Updated 64 import sites across `src/`, `tests/`, `scripts/` to use `src.core.*` — breaking the circular import cycle between `aml_workflow` and `file_processor`
+- **Test results**: 450+ passed, 1 pre-existing failure (`test_hallucination_on_workflow_sars`), 95% coverage. 7 intermittent DB-lock errors under full concurrency (0 in isolation — SQLite aiosqlite limitation)
 
 ### Phase 7 — Eval Harness + Improvements (in progress)
 - Calibration check (confidence vs actual accuracy across deciles)

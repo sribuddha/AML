@@ -2,7 +2,7 @@
 
 ## Configuration
 
-All config is driven by environment variables, loaded from a `.env` file on first access (lazy — no side effects on import).
+All config is driven by environment variables, loaded from a `.env` file via `_ensure_loaded()` on first function access. Every config value is read through a lazy accessor function (`get_*()`) — no `os.getenv()` calls at module level, no side effects on import.
 
 ### Quick Start
 
@@ -24,6 +24,7 @@ cp .env.template .env
 | `AML_GEMINI_API_KEY` | `""` | Gemini API key |
 | `AML_LLM_MODEL_TRIAGE` | `gpt-4o-mini` | Model for triage nodes (stage2 + stage3) |
 | `AML_LLM_MODEL_SAR` | `gpt-4o` | Model for SAR node |
+| `AML_CHUNK_SIZE` | `10000` | Max rows per chunk during upload processing (lazy: `get_chunk_size()`) |
 
 Values in `.env` take precedence over defaults but can still be overridden by shell environment variables.
 
@@ -297,14 +298,15 @@ python -c "
 import asyncio, shutil
 from pathlib import Path
 from sqlalchemy import select
-from src.bff.config import UPLOAD_DIR
+from src.bff.config import get_upload_dir
 from src.bff.database import async_session_factory
-from src.file_processor.models import UploadedFiles
+from src.core.models.uploaded_files import UploadedFiles
 async def main():
     async with async_session_factory() as s:
         r = await s.execute(select(UploadedFiles.id))
         valid = set(row[0] for row in r)
-    for d in [*UPLOAD_DIR.iterdir(), *(UPLOAD_DIR/'staging').iterdir()]:
+    upload_dir = get_upload_dir()
+    for d in [*upload_dir.iterdir(), *(upload_dir/'staging').iterdir()]:
         if d.is_dir() and d.name not in valid: shutil.rmtree(d)
 asyncio.run(main())
 "

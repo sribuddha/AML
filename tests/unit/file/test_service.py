@@ -452,6 +452,7 @@ async def test_try_insert_rows_bulk_fail_triggers_individual_fallback(seeded_ses
     from src.core.models.uploaded_files import UploadedFiles
     from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
+    from sqlalchemy.exc import SQLAlchemyError
     from unittest.mock import patch
     import uuid
 
@@ -483,7 +484,7 @@ async def test_try_insert_rows_bulk_fail_triggers_individual_fallback(seeded_ses
         nonlocal call_count
         call_count += 1
         if call_count == 1:
-            raise Exception("Bulk flush failed")
+            raise SQLAlchemyError("Bulk flush failed")
         return await original_flush()
 
     with patch.object(seeded_session, "flush", failing_flush):
@@ -674,6 +675,7 @@ async def test_try_insert_rows_individual_also_fails_writes_dbfail(seeded_sessio
     from src.core.models.uploaded_files import UploadedFiles
     from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
+    from sqlalchemy.exc import SQLAlchemyError
     from unittest.mock import patch
     import uuid
 
@@ -701,7 +703,7 @@ async def test_try_insert_rows_individual_also_fails_writes_dbfail(seeded_sessio
     async def always_failing_flush():
         nonlocal call_count
         call_count += 1
-        raise Exception("Flush always fails")
+        raise SQLAlchemyError("Flush always fails")
 
     with patch.object(seeded_session, "flush", always_failing_flush):
         inserted, failed = await _try_insert_rows(

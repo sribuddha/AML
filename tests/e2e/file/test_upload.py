@@ -41,7 +41,6 @@ async def test_upload_fewer_rows_than_chunk_size(seeded_session):
 @pytest.mark.asyncio
 async def test_upload_more_rows_than_chunk_size(seeded_session, monkeypatch):
     monkeypatch.setenv("AML_CHUNK_SIZE", "500")
-    monkeypatch.setattr(service, "CHUNK_SIZE", 500)
     upload_id = str(uuid.uuid4())
     rows = []
     for i in range(501):

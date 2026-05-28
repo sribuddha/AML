@@ -103,23 +103,28 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 │    UI    │────▶│    BFF   │────▶│ AML_Workflow  │
 │ (React)  │     │(FastAPI) │     │  (LangGraph)  │
 └──────────┘     └────┬─────┘     └───────────────┘
-                      │
-                 ┌────▼─────┐
-                 │  SQLite   │
-                 └──────────┘
+                      │                    │
+                 ┌────▼─────┐     ┌────────▼────────┐
+                 │  SQLite   │     │   src/core/     │
+                 └──────────┘     │ (Base, schemas,  │
+                                  │  models, utils,  │
+                                  │  observability)  │
+                                  └─────────────────┘
 ```
 
 ### Key Components
 
 - **UI (React):** File upload, dashboard, rule editor (future build — not yet implemented).
 
-- **BFF (FastAPI):** Single backend — file processing (CSV parse, structural validation, accepted/rejected routing), rules CRUD, BFF endpoints for UI consumption, and orchestration of AML_Workflow trigger. 19 REST endpoints under `/api`.
+- **BFF (FastAPI):** Single backend — file processing (CSV parse, structural validation, accepted/rejected routing), rules CRUD, BFF endpoints for UI consumption, and orchestration of AML_Workflow trigger. 19 REST endpoints under `/api`. Uses `Base` from `src.core.base`, schemas from `src.core.schemas`, and models from `src.core.models`.
 
 - **AML_Workflow (LangGraph):** Background state machine. Loads un-validated transactions + active deterministic rules → evaluates every (transaction × rule) pair → persists `validation_result` and updates `transaction.status` → optional two-stage LLM triage (stage2: aggregate analysis, stage3: deep-dive with customer history) → SAR creation → human review interrupt → finalize. Every status transition is recorded in `audit_log`.
 
 - **Eval Harness (`src/aml_workflow/eval/`):** Post-workflow evaluation. Measures detection metrics (precision/recall/F1 per fraud pattern), SAR hallucination rates (number/entity verification against source evidence), and rule completeness coverage in generated narratives. Runnable standalone via `scripts/run_eval.py`.
 
-- **SQLite:** Single-file database — 9 tables (customer, account, uploaded_files, rejected_record, transaction, rule, validation_result, sar, audit_log).
+- **Core (`src/core/`):** Shared module that breaks the circular dependency between `aml_workflow` and `file_processor`. Contains `base.py` (SQLAlchemy `DeclarativeBase`), `schemas.py` (Pydantic models), `utils.py` (shared helpers), `observability.py` (LangFuse/OpenTelemetry wrapper), and `models/` (8 model files: account, customer, uploaded_files, transaction, sar, validation_result, rule, enrichment_snapshot). Zero dependencies on other `src/` packages.
+
+- **SQLite:** Single-file database — 10 tables (customer, account, uploaded_files, rejected_record, transaction, rule, validation_result, sar, audit_log, enrichment_snapshot).
 
 ### Detailed Flow (Implemented)
 
@@ -228,7 +233,7 @@ uploaded → processing → pending_human → complete
 
 **File:** `src/bff/`
 
-FastAPI application (`app.py`) serving all REST endpoints under `/api`. Routes are registered across dedicated modules for uploads (`upload.py`, `read.py`, `reprocess.py`), rules (`rules.py`), SARs (`sar.py`), audit logs (`audit.py`), and validation results (`validation.py`). Auto-migration runs on startup via the application lifespan handler. Pydantic schemas in `schemas.py` define request/response models.
+FastAPI application (`app.py`) serving all REST endpoints under `/api`. Routes are registered across dedicated modules for uploads (`upload.py`, `read.py`, `reprocess.py`), rules (`rules.py`), SARs (`sar.py`), audit logs (`audit.py`), and validation results (`validation.py`). Auto-migration runs on startup via the application lifespan handler. Pydantic schemas in `src.core.schemas` define request/response models (shared across all packages).
 
 ### FileProcessor
 
@@ -676,9 +681,8 @@ No service-to-service HTTP calls. Internal communication is in-process:
 | customer_id | TEXT | NOT NULL, FOREIGN KEY → customer(customer_id) |
 | name | TEXT | nullable |
 | bank | TEXT | nullable |
-| location | TEXT | nullable |
-| date_opened | TEXT | ISO date string |
 | type | TEXT | e.g. checking, savings, credit |
+| date_opened | TEXT | ISO date string |
 | created_at | TEXT | ISO datetime |
 | updated_at | TEXT | ISO datetime |
 
@@ -722,7 +726,9 @@ No service-to-service HTTP calls. Internal communication is in-process:
 | customer_id | TEXT | NOT NULL — FK reference, validated at upload |
 | amount | REAL | |
 | counterparty | TEXT | |
-| location | TEXT | |
+| city | TEXT | nullable — expanded from `location` at upload |
+| state | TEXT | nullable — expanded from `location` at upload |
+| country | TEXT | nullable — expanded from `location` at upload |
 | date | TEXT | ISO date string |
 | source_txn_id | TEXT | NOT NULL — source system transaction ID |
 | status | TEXT | NOT NULL, default `loaded` — `loaded`, `clean`, `flagged`, `escalated`, `pending_review`, `dismissed` |
@@ -779,6 +785,9 @@ null
 | content | TEXT | NOT NULL — SAR narrative (LLM-generated or placeholder); for stage3 includes deep-dive analysis reasoning |
 | raw_llm_response | TEXT | nullable — raw JSON/text returned by the LLM API (SAR response) for debugging |
 | status | TEXT | NOT NULL, default `pending_review` — `pending_review`, `confirmed`, `dismissed` |
+| llm_confidence | REAL | nullable — confidence score from LLM triage (0.0–1.0) |
+| triage_reasoning | TEXT | nullable — reasoning text from LLM triage decision |
+| triage_stage | TEXT | nullable — which triage stage produced the SAR (`stage2`, `stage3`, `stage1`) |
 | created_at | TEXT | ISO datetime |
 | updated_at | TEXT | ISO datetime |
 | reviewed_at | TEXT | nullable — ISO datetime of human review |
@@ -885,7 +894,7 @@ None. No internal company packages are consumed.
 ## 11. Security Considerations
 
 - **No authentication:** The application has no login, no API keys, no JWT, no bearer tokens, and no role-based access. Every endpoint is fully open. Explicitly deferred to v2.
-- **CORS:** Wildcard CORS (`allow_origins=["*"]`, all methods, all headers, `allow_credentials` omitted since browsers reject `*` + `credentials=true`) — acceptable for local single-user use, but would need tightening for any multi-user or network-exposed deployment.
+- **CORS:** Wildcard CORS (`allow_origins=["*"]`, all methods, all headers, `allow_credentials` explicitly removed since browsers reject `*` + `credentials=true`) — acceptable for local single-user use, but would need tightening for any multi-user or network-exposed deployment.
 - **LLM API keys:** `AML_OPENAI_API_KEY` and `AML_GEMINI_API_KEY` are passed directly to the respective SDKs. They are read from environment variables / `.env` file and never logged.
 - **SQL injection:** No raw SQL. All queries use SQLAlchemy ORM with parameterized queries.
 - **Input validation:** File extension check (`.csv` only), column presence check, row-level structural validation (required fields, types, FK lookups). No executable content is accepted.
@@ -955,7 +964,7 @@ No log rotation, no JSON logging, no structured logging framework. No external l
 - [ ] **Reference data endpoints for customers/accounts:** The API spec lists `GET /api/customers` and `GET /api/accounts` but no router registers these routes (only `sar.py`, `rules.py`, `audit.py`, `validation.py`, `upload.py`, `read.py`, `reprocess.py` are registered in `app.py`).
 - [ ] **Gemini `google-genai` package name:** The actual PyPI package for Gemini is `google-genai` (not `google-generativeai`). Verifying correct package name in docs.
 - [ ] **HRM (Human Review Mode):** The `category` column on `validation_result` is never written — should it be populated during triage?
-- [x] **Eval metrics precision formula:** Fixed — `_compute_metrics` now uses `tp = min(flagged, total)` with clarified semantics. The function accepts (total ground-truth, correctly-flagged count). Callers that need full tp/fp/fn accounting should compute directly.
+- [x] **Eval metrics precision formula:** Fixed — `_compute_metrics` now uses explicit `correctly_flagged` parameter. `tp = correctly_flagged`, `fp = flagged - correctly_flagged`, `fn = total - correctly_flagged`. `PatternMetrics.accuracy` renamed to `recall`.
 
 ---
 

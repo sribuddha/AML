@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.bff.config import BASE_DIR
 from src.bff.database import get_db
 from src.file_processor.service import REQUIRED_FIELDS, HEADER_ALIASES, process_upload, retry_upload
+from src.bff.logger import logger
 
 WORK_DIR = BASE_DIR / "work"
 router = APIRouter()
@@ -31,7 +32,7 @@ async def upload_file(
 
     try:
         df = pd.read_csv(BytesIO(content))
-    except Exception as e:
+    except (pd.errors.ParserError, ValueError) as e:
         raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
 
     actual_cols = set(df.columns.str.strip().str.lower())
@@ -60,10 +61,13 @@ async def upload_file(
     result = await process_upload(df, file.filename, upload_id, db, content)
 
     async def _trigger_workflow():
-        from src.bff.database import async_session_factory
-        async with async_session_factory() as workflow_db:
-            from src.aml_workflow.triggers import run_validation
-            await run_validation(upload_id, workflow_db)
+        try:
+            from src.bff.database import async_session_factory
+            async with async_session_factory() as workflow_db:
+                from src.aml_workflow.triggers import run_validation
+                await run_validation(upload_id, workflow_db)
+        except Exception:
+            logger.exception("Background workflow failed for upload %s", upload_id)
 
     task = asyncio.create_task(_trigger_workflow())
     _background_tasks.add(task)
@@ -100,7 +104,7 @@ async def upload_from_work(
 
     try:
         df = pd.read_csv(BytesIO(content))
-    except Exception as e:
+    except (pd.errors.ParserError, ValueError) as e:
         raise HTTPException(status_code=400, detail=f"Could not parse CSV: {e}")
 
     actual_cols = set(df.columns.str.strip().str.lower())
@@ -149,10 +153,13 @@ async def upload_from_work(
         await db.commit()
 
     async def _trigger_workflow():
-        from src.bff.database import async_session_factory
-        async with async_session_factory() as workflow_db:
-            from src.aml_workflow.triggers import run_validation
-            await run_validation(upload_id, workflow_db)
+        try:
+            from src.bff.database import async_session_factory
+            async with async_session_factory() as workflow_db:
+                from src.aml_workflow.triggers import run_validation
+                await run_validation(upload_id, workflow_db)
+        except Exception:
+            logger.exception("Background workflow failed for upload %s", upload_id)
 
     task = asyncio.create_task(_trigger_workflow())
     _background_tasks.add(task)

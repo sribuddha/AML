@@ -70,23 +70,26 @@ class EvalReport:
         return "\n".join(lines)
 
 
-def _compute_metrics(total: int, flagged: int) -> tuple[float, float, float]:
-    """Compute precision, recall, and F1 given ground-truth count and correctly-flagged count.
+def _compute_metrics(total: int, true_positives: int) -> tuple[float, float, float]:
+    """Compute precision, recall, and F1 given ground-truth and correctly-flagged counts.
 
     Args:
         total: Number of ground-truth items (anomalous transactions for a pattern).
-        flagged: Number of ground-truth items that were correctly flagged by the system.
-                 Must be <= total.
+        true_positives: Number of ground-truth items that were correctly flagged.
+                        Must be <= total.
 
     Returns:
-        (precision, recall, f1). When flagged <= total (the normal case),
-        precision = 1.0 (no false positives in this subset), recall = flagged / total.
+        (precision, recall, f1). Since the harness tracks only correctly-flagged items
+        (not all flagged items), precision equals 1.0 in the common case where
+        true_positives <= total — i.e. this is a *coverage* metric, not a
+        binary-classification metric. Call it a "detection rate" rather than
+        conventional precision/recall.
     """
     if total == 0:
         return 0.0, 0.0, 0.0
-    tp = min(flagged, total)
+    tp = min(true_positives, total)
     fn = total - tp
-    fp = flagged - tp
+    fp = true_positives - tp
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0

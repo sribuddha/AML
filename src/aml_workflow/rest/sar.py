@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.models.sar import SAR
 from src.aml_workflow.models.transaction_status import TransactionStatus
-from src.aml_workflow.models.upload_status import UploadStatus
 from src.bff.database import get_db
+from src.aml_workflow.services import _set_upload_status
 from src.core.schemas import BatchReviewRequest, PaginatedResponse, ReviewRequest, SARResponse
 from src.core.models.uploaded_files import UploadedFiles
 
@@ -75,14 +75,7 @@ async def batch_review_sars(body: BatchReviewRequest, db: AsyncSession = Depends
         if remaining.scalar() == 0:
             upload = await db.get(UploadedFiles, uid)
             if upload and upload.status != "complete":
-                upload.status = "complete"
-                upload.updated_at = now
-                db.add(UploadStatus(
-                    upload_id=uid,
-                    status="complete",
-                    actor="system",
-                    created_at=now,
-                ))
+                await _set_upload_status(db, uid, "complete")
 
     await db.commit()
     logger.info("Batch %s %d SARs", body.action, len(sars))
@@ -132,14 +125,7 @@ async def review_sar(sar_id: str, body: ReviewRequest, db: AsyncSession = Depend
     if remaining.scalar() == 0:
         upload = await db.get(UploadedFiles, sar.upload_id)
         if upload and upload.status != "complete":
-            upload.status = "complete"
-            upload.updated_at = now
-            db.add(UploadStatus(
-                upload_id=sar.upload_id,
-                status="complete",
-                actor="system",
-                created_at=now,
-            ))
+            await _set_upload_status(db, sar.upload_id, "complete")
             await db.commit()
             logger.info("Upload %s completed after all SARs reviewed", sar.upload_id)
 

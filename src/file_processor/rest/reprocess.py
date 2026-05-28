@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
 from src.core.models.uploaded_files import UploadedFiles
+from src.aml_workflow.services import _set_upload_status
 
 router = APIRouter()
 
@@ -43,8 +44,7 @@ async def reprocess_upload(upload_id: str, db: AsyncSession = Depends(get_db)):
             except (ValueError, TypeError):
                 pass
 
-        upload.status = "uploaded"
-        upload.updated_at = datetime.now(UTC).isoformat()
+        await _set_upload_status(db, upload_id, "uploaded")
         await db.commit()
         return await _start_reprocess(upload_id)
 

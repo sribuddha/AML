@@ -1,24 +1,22 @@
 import contextlib
 import json
 import math
-import os
 import uuid as _uuid
 from datetime import datetime, UTC
 from pathlib import Path
 
 import pandas as pd
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.models.account import Account
 from src.core.models.customer import Customer
-from src.bff.config import get_upload_dir
+from src.bff.config import get_chunk_size, get_upload_dir
 from src.file_processor.models import RejectedRecord
 from src.core.models.transaction import Transaction
 from src.core.models.uploaded_files import UploadedFiles
-from src.aml_workflow.services import record_transaction_status
-
-CHUNK_SIZE = int(os.environ.get("AML_CHUNK_SIZE", "10000"))
+from src.aml_workflow.services import _set_upload_status, record_transaction_status
 
 REQUIRED_FIELDS = [
     "account_id", "customer_id", "amount",
@@ -131,13 +129,13 @@ async def _try_insert_rows(
         session.add_all(objs)
         await session.flush()
         inserted = len(rows)
-    except Exception:
+    except SQLAlchemyError:
         for row in rows:
             try:
                 session.add(Transaction(**row))
                 await session.flush()
                 inserted += 1
-            except Exception:
+            except SQLAlchemyError:
                 _write_dbfail(staging_dir, chunk_id, row)
                 failed += 1
 
@@ -163,6 +161,7 @@ async def process_upload(
 ):
     now = datetime.now(UTC).isoformat()
     total_rows = len(df)
+    chunk_size = get_chunk_size()
 
     staging_dir = get_upload_dir() / "staging" / upload_id
     staging_dir.mkdir(parents=True, exist_ok=True)
@@ -305,7 +304,7 @@ async def process_upload(
 
     txn_objs: list[Transaction] = []
     if accepted:
-        if accepted_count <= CHUNK_SIZE:
+        if accepted_count <= chunk_size:
             val_path = staging_dir / "0.val"
             val_df = pd.DataFrame(accepted)
             val_df.to_csv(val_path, index=False)
@@ -319,8 +318,8 @@ async def process_upload(
 
             val_path.rename(staging_dir / "0.val.db")
         else:
-            for chunk_num, chunk_idx in enumerate(range(0, accepted_count, CHUNK_SIZE)):
-                chunk = accepted[chunk_idx:chunk_idx + CHUNK_SIZE]
+            for chunk_num, chunk_idx in enumerate(range(0, accepted_count, chunk_size)):
+                chunk = accepted[chunk_idx:chunk_idx + chunk_size]
                 for txn_data in chunk:
                     txn_data["upload_id"] = upload_id
                     obj = Transaction(**txn_data)
@@ -410,14 +409,14 @@ async def retry_upload(upload_id: str, db: AsyncSession):
                 if line:
                     db_fail_rows.append(json.loads(line))
 
+    existing_txns = await db.execute(
+        select(Transaction.source_txn_id)
+    )
+    existing_src_ids = {row[0] for row in existing_txns.fetchall()}
+
     for chunk_id, val_path in enumerate(val_files):
         df = pd.read_csv(val_path, dtype=str)
         rows = df.to_dict(orient="records")
-
-        existing_txns = await db.execute(
-            select(Transaction.source_txn_id)
-        )
-        existing_src_ids = {row[0] for row in existing_txns.fetchall()}
 
         new_rows = [r for r in rows if r.get("source_txn_id") not in existing_src_ids]
 
@@ -445,10 +444,10 @@ async def retry_upload(upload_id: str, db: AsyncSession):
         else:
             total_failed += len(db_fail_rows) - len(new_dbfail_rows)
 
-    upload.status = "completed"
+    await _set_upload_status(db, upload_id, "complete")
+    upload = await db.get(UploadedFiles, upload_id)
     upload.accepted_count = (upload.accepted_count or 0) + total_accepted
     upload.failed_count = (upload.failed_count or 0) + total_failed
-    upload.updated_at = now
     await db.commit()
 
     return {

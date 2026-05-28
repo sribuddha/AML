@@ -4,6 +4,8 @@ from datetime import datetime, UTC
 
 from faker import Faker
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from src.core.models.rule import Rule
 from src.core.models.customer import Customer
 from src.core.models.account import Account
@@ -71,7 +73,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
         # Verify database is initialized
         try:
             await session.execute(text("SELECT 1 FROM customer LIMIT 1"))
-        except Exception:
+        except SQLAlchemyError:
             print("ERROR: Database not initialized. Run 'python -m scripts.init_db' first.")
             return
 
