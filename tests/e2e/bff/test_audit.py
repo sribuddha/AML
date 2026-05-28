@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from src.bff.database import get_db
 from src.bff.app import app
-from src.file_processor.models import UploadedFiles
+from src.core.models.uploaded_files import UploadedFiles
 from src.file_processor.service import process_upload
 from tests.helpers import upload_csv
 

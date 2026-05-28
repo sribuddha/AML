@@ -74,7 +74,10 @@ def evaluate_rules(txn: dict[str, Any], rules: list[dict[str, Any]]) -> dict[str
     result: dict[str, str] = {}
     for rule_dict in rules:
         rj = rule_dict["rules_json"]
-        conditions = json.loads(rj) if isinstance(rj, str) else rj
+        try:
+            conditions = json.loads(rj) if isinstance(rj, str) else rj
+        except (json.JSONDecodeError, TypeError):
+            continue
         if evaluate_conditions(txn, conditions):
             result[rule_dict["id"]] = rule_dict["name"]
     return result

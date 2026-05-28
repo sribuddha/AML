@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.aml_workflow.eval import _compute_metrics
 from src.aml_workflow.eval.completeness import check_sar as check_completeness
 from src.aml_workflow.eval.hallucination import check_sar as check_hallucination
-from src.aml_workflow.models.sar import SAR
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.sar import SAR
+from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
-from src.bff.schemas import EvalReportResponse
-from src.file_processor.models import Transaction, UploadedFiles
+from src.core.schemas import EvalReportResponse
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 router = APIRouter()
 

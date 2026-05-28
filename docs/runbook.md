@@ -2,7 +2,7 @@
 
 ## Configuration
 
-All config is driven by environment variables, loaded from a `.env` file if present.
+All config is driven by environment variables, loaded from a `.env` file on first access (lazy — no side effects on import).
 
 ### Quick Start
 
@@ -16,9 +16,9 @@ cp .env.template .env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AML_DATA_DIR` | `<project_root>/data` | Root directory for persistent data |
-| `AML_UPLOAD_DIR` | `<AML_DATA_DIR>/uploads` | Directory for uploaded CSV files |
-| `AML_DATABASE_URL` | `sqlite+aiosqlite:///<AML_DATA_DIR>/aml.db` | SQLAlchemy database URL |
+| `AML_DATA_DIR` | `<project_root>/data` | Root directory for persistent data (lazy: `get_data_dir()`) |
+| `AML_UPLOAD_DIR` | `<AML_DATA_DIR>/uploads` | Directory for uploaded CSV files (lazy: `get_upload_dir()`) |
+| `AML_DATABASE_URL` | `sqlite+aiosqlite:///<AML_DATA_DIR>/aml.db` | SQLAlchemy database URL (lazy: `get_database_url()`) |
 | `AML_LLM_PROVIDER` | `openai` | Provider: `openai` or `gemini` |
 | `AML_OPENAI_API_KEY` | `""` | OpenAI API key |
 | `AML_GEMINI_API_KEY` | `""` | Gemini API key |

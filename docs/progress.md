@@ -281,6 +281,19 @@
 - **Bug fix**: `source_txn_id` popped from LLM response dict before unpacking into `TriageDecision(**d)` to avoid unexpected keyword argument error
 - **Current totals**: 196 backend unit tests, 85 e2e, 272 frontend tests — all passing
 
+### Phase 10 — Architectural Cleanup (✅ Done)
+- **CORS fix**: Removed `allow_credentials=True` (incompatible with `allow_origins=["*"]` per browser spec)
+- **Lazy config**: `config.py` no longer creates directories or loads `.env` at import time — now uses `get_data_dir()`, `get_upload_dir()`, `get_database_url()` functions with lazy initialization
+- **Status service extraction**: Extracted `transition_upload()` and `record_transaction_status()` into `src/aml_workflow/services.py`, eliminating 15+ duplicated status update blocks across `triggers.py`, `graph.py`, and `service.py`
+- **N+1 query fix**: `service.py` now batches FK lookups (account/customer) into two queries instead of N*2 per row
+- **`_is_transient` fix**: Changed from string-based `type(e).__name__` matching to `isinstance()` for built-in types (`TimeoutError`, `ConnectionError`)
+- **Magic number**: Extracted `WEEKS_PRIOR = 4.0` constant in graph.py velocity calculation
+- **Bare except fixes**: Narrowed `except Exception` in `llm.py` Gemini batch methods to `(json.JSONDecodeError, KeyError, ValueError, TypeError)`
+- **Validator safety**: Added `try/except` around `json.loads` in `validator.py` — malformed rules no longer crash the engine
+- **Eval metric clarity**: Removed misleading `PatternMetrics.accuracy` property (was just an alias for `recall`); documented `_compute_metrics` semantics
+- **Router ordering**: Removed ad-hoc comments — ordering dependency is now documented inline
+- **New file**: `src/aml_workflow/services.py` — status transition service functions
+
 ### Phase 7 — Eval Harness + Improvements (in progress)
 - Calibration check (confidence vs actual accuracy across deciles)
 - Two-stage triage filter (cheap Stage 1, expensive Stage 2) — ✅ Done

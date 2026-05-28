@@ -34,17 +34,17 @@ app = FastAPI(title="AML BFF", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(file_processor_router)
-app.include_router(operations_router)  # must be before read_router (static /search vs {upload_id})
+# Order matters: /search (static path) must be registered before /{upload_id} (dynamic param)
+app.include_router(operations_router)
 app.include_router(read_router)
 app.include_router(reprocess_router)
 app.include_router(rules_router)
-app.include_router(compliance_router)  # must be before sar_router (static /pending vs {sar_id})
+app.include_router(compliance_router)
 app.include_router(sar_router)
 app.include_router(eval_router)
 app.include_router(audit_router)

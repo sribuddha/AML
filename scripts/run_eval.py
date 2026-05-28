@@ -18,11 +18,12 @@ from src.aml_workflow.eval import EvalReport, PatternMetrics, _compute_metrics
 from src.aml_workflow.eval.hallucination import check_sar as check_hallucination
 from src.aml_workflow.eval.completeness import check_sar as check_completeness
 from src.aml_workflow.triggers import run_validation
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.validation_result import ValidationResult
 from src.bff.database import async_session_factory
-from src.file_processor.models import Transaction, UploadedFiles
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 from src.file_processor.service import process_upload
-from src.aml_workflow.models.sar import SAR
+from src.core.models.sar import SAR
 from tests.helpers import upload_csv as _upload_csv
 
 

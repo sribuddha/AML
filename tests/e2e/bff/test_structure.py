@@ -3,12 +3,14 @@ from datetime import datetime, UTC
 
 import pandas as pd
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 from sqlalchemy import select, func
 
 from src.bff.database import get_db
 from src.bff.app import app
-from src.file_processor.models import UploadedFiles, Transaction
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 from src.file_processor.service import process_upload
 
 
@@ -25,8 +27,8 @@ def upload_id():
     return str(uuid.uuid4())
 
 
-@pytest.fixture
-def seeded_upload(seeded_session, upload_id):
+@pytest_asyncio.fixture
+async def seeded_upload(seeded_session, upload_id):
     now = datetime.now(UTC).isoformat()
     upload = UploadedFiles(
         id=upload_id,
@@ -60,7 +62,7 @@ def seeded_upload(seeded_session, upload_id):
         ),
     ]
     seeded_session.add_all(txns)
-    seeded_session.commit()
+    await seeded_session.commit()
     return upload_id
 
 

@@ -4,7 +4,9 @@ from datetime import datetime, UTC
 import pytest
 import pytest_asyncio
 
-from src.file_processor.models import UploadedFiles, Transaction, RejectedRecord
+from src.file_processor.models import RejectedRecord
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 
 @pytest_asyncio.fixture

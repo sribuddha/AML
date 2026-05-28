@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.aml_workflow.models.rule import Rule
+from src.core.models.rule import Rule
 from src.bff.database import get_db
-from src.bff.schemas import PaginatedResponse, RuleCreate, RuleResponse, RuleStatusUpdate, RuleUpdate
+from src.core.schemas import PaginatedResponse, RuleCreate, RuleResponse, RuleStatusUpdate, RuleUpdate
 
 router = APIRouter()
 

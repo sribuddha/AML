@@ -3,9 +3,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bff.database import get_db
-from src.bff.models.account import Account
-from src.bff.models.customer import Customer
-from src.bff.schemas import (
+from src.core.models.account import Account
+from src.core.models.customer import Customer
+from src.core.schemas import (
     AccountDetailResponse,
     CustomerDetailResponse,
     CustomerSummaryResponse,

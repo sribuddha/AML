@@ -47,7 +47,7 @@ async def test_generate_upload_date_distribution(tmp_path, seeded_session):
 
 @pytest.mark.asyncio
 async def test_generate_stage1_fraud_distributes_across_rules(tmp_path, seeded_session):
-    from src.aml_workflow.models.rule import Rule
+    from src.core.models.rule import Rule
     from datetime import datetime, UTC
     import json, uuid
 

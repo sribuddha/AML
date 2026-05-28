@@ -4,8 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.aml_workflow.models.upload_status import UploadStatus
 from src.bff.database import get_db
-from src.file_processor.models import UploadedFiles
-from src.bff.schemas import UploadStatusResponse, PaginatedResponse
+from src.core.models.uploaded_files import UploadedFiles
+from src.core.schemas import UploadStatusResponse, PaginatedResponse
 
 router = APIRouter()
 

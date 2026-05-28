@@ -6,8 +6,9 @@ import pandas as pd
 import pytest
 from sqlalchemy import select, func
 
-from src.bff.config import UPLOAD_DIR
-from src.file_processor.models import Transaction, UploadedFiles
+from src.bff.config import get_upload_dir
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 import src.file_processor.service as service
 
 
@@ -78,7 +79,7 @@ async def test_upload_unknown_location_rejected(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / upload_id
+    staging_dir = get_upload_dir() / "staging" / upload_id
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     rows = [

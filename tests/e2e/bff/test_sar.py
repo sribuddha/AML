@@ -2,11 +2,12 @@ import uuid
 from datetime import datetime, UTC
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 
 from src.bff.database import get_db
 from src.bff.app import app
-from src.aml_workflow.models.sar import SAR
+from src.core.models.sar import SAR
 
 
 @pytest.fixture
@@ -17,8 +18,8 @@ def client(seeded_session):
     app.dependency_overrides.clear()
 
 
-@pytest.fixture
-def seeded_sar(seeded_session):
+@pytest_asyncio.fixture
+async def seeded_sar(seeded_session):
     now = datetime.now(UTC).isoformat()
     sar = SAR(
         id=str(uuid.uuid4()),
@@ -31,7 +32,7 @@ def seeded_sar(seeded_session):
         updated_at=now,
     )
     seeded_session.add(sar)
-    seeded_session.commit()
+    await seeded_session.commit()
     return sar
 
 

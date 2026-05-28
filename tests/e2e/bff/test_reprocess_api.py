@@ -4,9 +4,10 @@ from datetime import datetime, UTC
 import pytest
 import pytest_asyncio
 
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.validation_result import ValidationResult
 from src.aml_workflow.models.upload_status import UploadStatus
-from src.file_processor.models import UploadedFiles, Transaction
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 
 @pytest_asyncio.fixture

@@ -12,9 +12,10 @@ from src.aml_workflow.eval import EvalReport, PatternMetrics, _compute_metrics
 from src.aml_workflow.eval.hallucination import check_sar as check_hallucination
 from src.aml_workflow.eval.completeness import check_sar as check_completeness
 from src.aml_workflow.triggers import run_validation
-from src.aml_workflow.models.rule import Rule
-from src.aml_workflow.models.validation_result import ValidationResult
-from src.file_processor.models import Transaction, UploadedFiles
+from src.core.models.rule import Rule
+from src.core.models.validation_result import ValidationResult
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 from tests.helpers import upload_csv
 
 
@@ -140,9 +141,9 @@ class TestEvalPipeline:
         assert rec == 0.0
         assert f1 == 0.0
 
-    async def test_pattern_metrics_accuracy_property(self):
+    async def test_pattern_metrics_recall_property(self):
         pm = PatternMetrics(pattern="test", total=10, flagged=5, precision=0.5, recall=0.8, f1=0.62)
-        assert pm.accuracy == pm.recall
+        assert pm.recall == 0.8
 
     async def test_eval_report_summary_format(self):
         pm = PatternMetrics(pattern="structuring", total=10, flagged=5, precision=0.5, recall=0.8, f1=0.62)
@@ -180,7 +181,7 @@ class TestEvalPipeline:
         upload_id = await upload_csv(seeded_session, csv_path)
         await run_validation(upload_id, seeded_session)
 
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()
@@ -243,7 +244,7 @@ class TestEvalPipeline:
         upload_id = await upload_csv(seeded_session, csv_path)
         await run_validation(upload_id, seeded_session, mode="full")
 
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()

@@ -270,7 +270,7 @@ async def generate(count: int, output: str, manifest_output: str, seed_rules: bo
 
 async def _seed_rules():
     import json as _json
-    from src.aml_workflow.models.rule import Rule
+    from src.core.models.rule import Rule
     from datetime import datetime, UTC
 
     now = datetime.now(UTC).isoformat()

@@ -16,7 +16,7 @@ from pathlib import Path
 from faker import Faker
 from sqlalchemy import select
 
-from src.aml_workflow.models.rule import Rule
+from src.core.models.rule import Rule
 from src.bff.database import async_session_factory
 from src.file_processor.service import _LOCATION_MAP
 

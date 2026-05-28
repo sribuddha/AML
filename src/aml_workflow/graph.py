@@ -12,6 +12,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.aml_workflow.llm import LLMClient
+from src.aml_workflow.services import _set_upload_status, record_transaction_status
 from src.bff.config import VELOCITY_ZSCORE_THRESHOLD, STRUCTURING_24H_THRESHOLD
 from src.bff.logger import logger
 from src.aml_workflow.state import WorkflowState
@@ -19,8 +20,7 @@ from src.aml_workflow.validator import evaluate_rules
 
 MAX_RETRIES = 3
 
-TRANSIENT_ERRORS = {
-    "TimeoutError",
+_LIBRARY_TRANSIENT_NAMES = {
     "OperationalError",
     "ConnectError",
     "APITimeoutError",
@@ -31,7 +31,9 @@ TRANSIENT_ERRORS = {
 
 
 def _is_transient(e: Exception) -> bool:
-    return type(e).__name__ in TRANSIENT_ERRORS
+    if isinstance(e, (TimeoutError, ConnectionError)):
+        return True
+    return type(e).__name__ in _LIBRARY_TRANSIENT_NAMES
 
 
 def _now() -> str:
@@ -74,9 +76,9 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
     # ── Graph nodes ────────────────────────────────────────────────
 
     async def load_data(state: WorkflowState) -> dict:
-        from src.aml_workflow.models.rule import Rule
-        from src.aml_workflow.models.validation_result import ValidationResult
-        from src.file_processor.models import Transaction
+        from src.core.models.rule import Rule
+        from src.core.models.validation_result import ValidationResult
+        from src.core.models.transaction import Transaction
 
         upload_id = state["upload_id"]
 
@@ -127,9 +129,8 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
         }
 
     async def rule_engine_batch(state: WorkflowState) -> dict:
-        from src.file_processor.models import Transaction as TxnModel
-        from src.aml_workflow.models.transaction_status import TransactionStatus
-        from src.aml_workflow.models.validation_result import ValidationResult
+        from src.core.models.transaction import Transaction as TxnModel
+        from src.core.models.validation_result import ValidationResult
 
         results: list[dict] = []
         validated_at = state["validated_at"]
@@ -194,10 +195,11 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
                     weeks_ago = int((ref_date - dt).days // 7)
                     if 1 <= weeks_ago <= 4:
                         weekly_buckets[weeks_ago - 1] += 1
-            avg_weekly = sum(weekly_buckets) / 4.0
+            WEEKS_PRIOR = 4.0
+            avg_weekly = sum(weekly_buckets) / WEEKS_PRIOR
             velocity_zscore = None
             if avg_weekly > 0 and this_week_count > 0:
-                variance = sum((c - avg_weekly) ** 2 for c in weekly_buckets) / 4.0
+                variance = sum((c - avg_weekly) ** 2 for c in weekly_buckets) / WEEKS_PRIOR
                 std_weekly = math.sqrt(variance) if variance > 0 else 1.0
                 velocity_zscore = (this_week_count - avg_weekly) / max(std_weekly, 1.0)
 
@@ -240,14 +242,7 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
         await db.flush()
 
         for r in results:
-            txn_id = r["transaction_id"]
-            new_status = r["status"]
-            db.add(TransactionStatus(
-                transaction_id=txn_id,
-                status=new_status,
-                actor="system",
-                created_at=now,
-            ))
+            await record_transaction_status(db, r["transaction_id"], r["status"])
 
         await db.commit()
         return {"results": results}
@@ -262,9 +257,8 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
         return {"enriched_data": enriched}
 
     async def stage2_triage(state: WorkflowState) -> dict:
-        from src.file_processor.models import Transaction as TxnModel
-        from src.aml_workflow.models.transaction_status import TransactionStatus
-        from src.aml_workflow.models.validation_result import ValidationResult
+        from src.core.models.transaction import Transaction as TxnModel
+        from src.core.models.validation_result import ValidationResult
         from sqlalchemy import update as sa_update
 
         flagged = [r for r in state["results"] if r["status"] == "flagged"]
@@ -301,12 +295,7 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
                 result["triage_stage"] = "stage2"
 
                 new_status = "escalated" if decision.escalate else "clean"
-                db.add(TransactionStatus(
-                    transaction_id=result["transaction_id"],
-                    status=new_status,
-                    actor="system",
-                    created_at=now,
-                ))
+                await record_transaction_status(db, result["transaction_id"], new_status)
 
                 await db.execute(
                     sa_update(ValidationResult)
@@ -326,12 +315,7 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
             result["llm_confidence"] = decision.confidence
             result["triage_stage"] = "stage2"
 
-            db.add(TransactionStatus(
-                transaction_id=result["transaction_id"],
-                status="escalated",
-                actor="system",
-                created_at=now,
-            ))
+            await record_transaction_status(db, result["transaction_id"], "escalated")
 
             await db.execute(
                 sa_update(ValidationResult)
@@ -348,9 +332,8 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
         return {"triage_results": {r["transaction_id"]: r for r in flagged}}
 
     async def stage3_triage(state: WorkflowState) -> dict:
-        from src.file_processor.models import Transaction
-        from src.aml_workflow.models.transaction_status import TransactionStatus
-        from src.aml_workflow.models.validation_result import ValidationResult
+        from src.core.models.transaction import Transaction
+        from src.core.models.validation_result import ValidationResult
         from sqlalchemy import update as sa_update
 
         escalated = [r for r in state["results"] if r.get("risk_level") == "high"]
@@ -421,12 +404,7 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
                 result["triage_stage"] = "stage3"
                 result["sar_content"] = decision.reason if decision.escalate else ""
 
-                db.add(TransactionStatus(
-                    transaction_id=result["transaction_id"],
-                    status=new_status,
-                    actor="system",
-                    created_at=now,
-                ))
+                await record_transaction_status(db, result["transaction_id"], new_status)
 
                 await db.execute(
                     sa_update(ValidationResult)
@@ -447,12 +425,7 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
             result["triage_stage"] = "stage3"
             result["sar_content"] = decision.reason
 
-            db.add(TransactionStatus(
-                transaction_id=result["transaction_id"],
-                status="pending_review",
-                actor="system",
-                created_at=now,
-            ))
+            await record_transaction_status(db, result["transaction_id"], "pending_review")
 
             await db.execute(
                 sa_update(ValidationResult)
@@ -469,10 +442,7 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
         return {}
 
     async def sar_node(state: WorkflowState) -> dict:
-        from src.aml_workflow.models.sar import SAR
-        from src.aml_workflow.models.transaction_status import TransactionStatus
-        from src.aml_workflow.models.upload_status import UploadStatus
-        from src.file_processor.models import UploadedFiles
+        from src.core.models.sar import SAR
 
         now = _now()
         sars: list[dict] = []
@@ -543,23 +513,9 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
             await db.flush()
 
             for sar_obj in objs:
-                db.add(TransactionStatus(
-                    transaction_id=sar_obj.transaction_id,
-                    status="pending_review",
-                    actor="system",
-                    created_at=now,
-                ))
+                await record_transaction_status(db, sar_obj.transaction_id, "pending_review")
 
-            upload = await db.get(UploadedFiles, state["upload_id"])
-            if upload:
-                upload.status = "pending_human"
-                upload.updated_at = now
-                db.add(UploadStatus(
-                    upload_id=state["upload_id"],
-                    status="pending_human",
-                    actor="system",
-                    created_at=now,
-                ))
+            await _set_upload_status(db, state["upload_id"], "pending_human")
 
             await db.commit()
             logger.info("Created %d SARs for upload %s", len(sars), state["upload_id"])
@@ -572,7 +528,7 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
             return {"human_review_complete": True}
 
         from sqlalchemy import func, select
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         from src.bff.database import async_session_factory
 
         async with async_session_factory() as fresh_db:
@@ -595,32 +551,16 @@ def create_workflow(db: AsyncSession, llm: LLMClient | None = None, mode: str = 
         return {"human_review_complete": True}
 
     async def finalize(state: WorkflowState) -> dict:
-        from src.aml_workflow.models.upload_status import UploadStatus
-        from src.file_processor.models import UploadedFiles
-
-        upload = await db.get(UploadedFiles, state["upload_id"])
-        if upload is None:
-            return {}
+        upload_id = state["upload_id"]
 
         human_reviewed = state.get("human_review_complete", False)
         has_sars = bool(state.get("sars"))
 
-        if has_sars and not human_reviewed:
-            upload.status = "pending_human"
-        else:
-            upload.status = "complete"
-
-        now = _now()
-        upload.updated_at = now
-        db.add(UploadStatus(
-            upload_id=state["upload_id"],
-            status=upload.status,
-            actor="system",
-            created_at=now,
-        ))
+        final_status = "pending_human" if (has_sars and not human_reviewed) else "complete"
+        await _set_upload_status(db, upload_id, final_status)
         await db.commit()
 
-        logger.info("Upload %s status: %s", state["upload_id"], upload.status)
+        logger.info("Upload %s status: %s", upload_id, final_status)
         return {}
 
     # ── Routing helpers ───────────────────────────────────────────

@@ -4,7 +4,7 @@ import pytest
 import pytest_asyncio
 
 from datetime import datetime, UTC
-from src.aml_workflow.models.rule import Rule
+from src.core.models.rule import Rule
 
 
 @pytest_asyncio.fixture

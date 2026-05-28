@@ -8,9 +8,9 @@ from datetime import datetime, timedelta, UTC
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
-from src.bff.models.account import Account
-from src.file_processor.models import Transaction
+from src.core.models.enrichment_snapshot import EnrichmentSnapshot
+from src.core.models.account import Account
+from src.core.models.transaction import Transaction
 
 
 @dataclass

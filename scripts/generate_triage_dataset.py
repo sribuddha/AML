@@ -20,11 +20,11 @@ import pandas as pd
 from faker import Faker
 from sqlalchemy import select, text
 
-from src.aml_workflow.models.rule import Rule
-from src.aml_workflow.models.validation_result import ValidationResult
-from src.aml_workflow.models.sar import SAR
-from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
-from src.file_processor.models import Transaction
+from src.core.models.rule import Rule
+from src.core.models.validation_result import ValidationResult
+from src.core.models.sar import SAR
+from src.core.models.enrichment_snapshot import EnrichmentSnapshot
+from src.core.models.transaction import Transaction
 from src.bff.database import async_session_factory
 from src.file_processor.service import process_upload
 from src.aml_workflow.triggers import run_validation
@@ -283,7 +283,7 @@ async def report(session, upload_id: str, mode: str, eval_path: Path):
     print(f"  Enrichment snapshots: {len(snaps)} customers")
     print(f"  SARs created:        {len(sars)}")
 
-    from src.file_processor.models import UploadedFiles
+    from src.core.models.uploaded_files import UploadedFiles
     upload_rec = await session.get(UploadedFiles, upload_id)
     if upload_rec:
         print(f"  Upload status:       {upload_rec.status}")

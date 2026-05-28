@@ -4,7 +4,7 @@ from sqlalchemy import ForeignKey, String
 from sqlalchemy.types import JSON as JSONType
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.bff.database import Base
+from src.core.base import Base
 
 
 class ValidationResult(Base):

@@ -6,11 +6,12 @@ from sqlalchemy import select
 
 from src.aml_workflow.graph import create_workflow
 from src.aml_workflow.llm import LLMClient, TriageDecision, SarResult
-from src.aml_workflow.models.rule import Rule
-from src.aml_workflow.models.sar import SAR
+from src.core.models.rule import Rule
+from src.core.models.sar import SAR
 from src.aml_workflow.models.transaction_status import TransactionStatus
-from src.aml_workflow.models.validation_result import ValidationResult
-from src.file_processor.models import Transaction, UploadedFiles
+from src.core.models.validation_result import ValidationResult
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 from src.aml_workflow.models.upload_status import UploadStatus
 from tests.helpers import upload_csv
 

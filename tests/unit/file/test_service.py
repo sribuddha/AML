@@ -7,7 +7,7 @@ import pytest
 
 import uuid
 
-from src.bff.config import UPLOAD_DIR
+from src.bff.config import get_upload_dir
 from src.file_processor.service import process_upload
 
 
@@ -157,7 +157,9 @@ async def test_upload_creates_db_records(seeded_session):
     result = await process_upload(df, "db_test.csv", str(uuid.uuid4()), seeded_session)
     upload_id = result["upload_id"]
 
-    from src.file_processor.models import Transaction, UploadedFiles, RejectedRecord
+    from src.file_processor.models import RejectedRecord
+    from src.core.models.transaction import Transaction
+    from src.core.models.uploaded_files import UploadedFiles
     from sqlalchemy import select
 
     upload = (await seeded_session.execute(
@@ -231,7 +233,7 @@ async def test_staging_dir_created_with_fail_files(seeded_session):
     ])
     result = await process_upload(df, "staging_test.csv", str(uuid.uuid4()), seeded_session)
     upload_id = result["upload_id"]
-    staging_dir = UPLOAD_DIR / "staging" / str(upload_id)
+    staging_dir = get_upload_dir() / "staging" / str(upload_id)
 
     assert staging_dir.exists()
     assert (staging_dir / "0.val.db").exists()
@@ -253,7 +255,7 @@ async def test_retry_not_found(seeded_session):
 @pytest.mark.asyncio
 async def test_retry_no_staging_dir(seeded_session):
     from src.file_processor.service import retry_upload
-    from src.file_processor.models import UploadedFiles
+    from src.core.models.uploaded_files import UploadedFiles
     from datetime import datetime, UTC
     import uuid
     import pytest as _pytest
@@ -275,8 +277,8 @@ async def test_retry_no_staging_dir(seeded_session):
 @pytest.mark.asyncio
 async def test_retry_no_val_files(seeded_session):
     from src.file_processor.service import retry_upload
-    from src.file_processor.models import UploadedFiles
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     import uuid
     import pytest as _pytest
@@ -291,7 +293,7 @@ async def test_retry_no_val_files(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / upload_id
+    staging_dir = get_upload_dir() / "staging" / upload_id
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     with _pytest.raises(ValueError, match="No .val files found"):
@@ -301,8 +303,9 @@ async def test_retry_no_val_files(seeded_session):
 @pytest.mark.asyncio
 async def test_retry_success(seeded_session):
     from src.file_processor.service import retry_upload
-    from src.file_processor.models import UploadedFiles, Transaction
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.transaction import Transaction
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     from sqlalchemy import select
     import uuid
@@ -318,7 +321,7 @@ async def test_retry_success(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / failed_id
+    staging_dir = get_upload_dir() / "staging" / failed_id
     staging_dir.mkdir(parents=True, exist_ok=True)
     val_df = pd.DataFrame([
         {"account_id": "ACC001", "customer_id": "CUST001", "amount": 100.00,
@@ -344,8 +347,9 @@ async def test_retry_success(seeded_session):
 @pytest.mark.asyncio
 async def test_retry_idempotency_skips_duplicates(seeded_session):
     from src.file_processor.service import retry_upload
-    from src.file_processor.models import UploadedFiles, Transaction
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.transaction import Transaction
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     from sqlalchemy import select
     import uuid
@@ -386,7 +390,7 @@ async def test_retry_idempotency_skips_duplicates(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / failed_id
+    staging_dir = get_upload_dir() / "staging" / failed_id
     staging_dir.mkdir(parents=True, exist_ok=True)
     val_df = pd.DataFrame([
         {"account_id": "ACC001", "customer_id": "CUST001", "amount": 100.00,
@@ -414,7 +418,7 @@ async def test_try_insert_rows_empty_returns_zero(seeded_session):
     from datetime import datetime, UTC
 
     now = datetime.now(UTC).isoformat()
-    staging_dir = UPLOAD_DIR / "staging" / "_empty_test"
+    staging_dir = get_upload_dir() / "staging" / "_empty_test"
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     inserted, failed = await _try_insert_rows(seeded_session, [], "_upload_id", now, staging_dir, "0")
@@ -426,10 +430,10 @@ async def test_try_insert_rows_empty_returns_zero(seeded_session):
 @pytest.mark.asyncio
 async def test_write_dbfail_creates_file(seeded_session):
     from src.file_processor.service import _write_dbfail
-    from src.bff.config import UPLOAD_DIR
+    from src.bff.config import get_upload_dir
     import shutil
 
-    staging_dir = UPLOAD_DIR / "staging" / "_dbfail_write_test"
+    staging_dir = get_upload_dir() / "staging" / "_dbfail_write_test"
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     row = {"account_id": "ACC001", "source_txn_id": "DBFAIL_WRITE"}
@@ -445,8 +449,8 @@ async def test_write_dbfail_creates_file(seeded_session):
 @pytest.mark.asyncio
 async def test_try_insert_rows_bulk_fail_triggers_individual_fallback(seeded_session):
     from src.file_processor.service import _try_insert_rows
-    from src.file_processor.models import UploadedFiles
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     from unittest.mock import patch
     import uuid
@@ -460,7 +464,7 @@ async def test_try_insert_rows_bulk_fail_triggers_individual_fallback(seeded_ses
     seeded_session.add(upload)
     await seeded_session.flush()
 
-    staging_dir = UPLOAD_DIR / "staging" / upload_id
+    staging_dir = get_upload_dir() / "staging" / upload_id
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     rows = [
@@ -494,8 +498,9 @@ async def test_try_insert_rows_bulk_fail_triggers_individual_fallback(seeded_ses
 @pytest.mark.asyncio
 async def test_retry_processes_dbfail_files(seeded_session):
     from src.file_processor.service import retry_upload
-    from src.file_processor.models import UploadedFiles, Transaction
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.transaction import Transaction
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     from sqlalchemy import select
     import uuid
@@ -512,7 +517,7 @@ async def test_retry_processes_dbfail_files(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / failed_id
+    staging_dir = get_upload_dir() / "staging" / failed_id
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     val_df = pd.DataFrame([
@@ -544,8 +549,9 @@ async def test_retry_processes_dbfail_files(seeded_session):
 @pytest.mark.asyncio
 async def test_retry_skip_when_all_rows_are_dupes(seeded_session):
     from src.file_processor.service import retry_upload
-    from src.file_processor.models import UploadedFiles, Transaction
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.transaction import Transaction
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     from sqlalchemy import select
     import uuid
@@ -586,7 +592,7 @@ async def test_retry_skip_when_all_rows_are_dupes(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / failed_id
+    staging_dir = get_upload_dir() / "staging" / failed_id
     staging_dir.mkdir(parents=True, exist_ok=True)
     val_df = pd.DataFrame([
         {"account_id": "ACC001", "customer_id": "CUST001", "amount": 100.00,
@@ -603,8 +609,9 @@ async def test_retry_skip_when_all_rows_are_dupes(seeded_session):
 @pytest.mark.asyncio
 async def test_retry_skips_dbfail_duplicates(seeded_session):
     from src.file_processor.service import retry_upload
-    from src.file_processor.models import UploadedFiles, Transaction
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.transaction import Transaction
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     from sqlalchemy import select
     import uuid
@@ -637,7 +644,7 @@ async def test_retry_skips_dbfail_duplicates(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / failed_id
+    staging_dir = get_upload_dir() / "staging" / failed_id
     staging_dir.mkdir(parents=True, exist_ok=True)
     val_df = pd.DataFrame([
         {"account_id": "ACC002", "customer_id": "CUST001", "amount": 200.00,
@@ -664,8 +671,8 @@ async def test_retry_skips_dbfail_duplicates(seeded_session):
 @pytest.mark.asyncio
 async def test_try_insert_rows_individual_also_fails_writes_dbfail(seeded_session):
     from src.file_processor.service import _try_insert_rows
-    from src.file_processor.models import UploadedFiles
-    from src.bff.config import UPLOAD_DIR
+    from src.core.models.uploaded_files import UploadedFiles
+    from src.bff.config import get_upload_dir
     from datetime import datetime, UTC
     from unittest.mock import patch
     import uuid
@@ -679,7 +686,7 @@ async def test_try_insert_rows_individual_also_fails_writes_dbfail(seeded_sessio
     seeded_session.add(upload)
     await seeded_session.flush()
 
-    staging_dir = UPLOAD_DIR / "staging" / upload_id
+    staging_dir = get_upload_dir() / "staging" / upload_id
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     rows = [

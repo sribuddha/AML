@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.aml_workflow.models.sar import SAR
+from src.core.models.sar import SAR
 from src.bff.database import get_db
-from src.bff.schemas import PaginatedResponse, UploadSummaryResponse
-from src.file_processor.models import UploadedFiles
+from src.core.schemas import PaginatedResponse, UploadSummaryResponse
+from src.core.models.uploaded_files import UploadedFiles
 
 router = APIRouter()
 

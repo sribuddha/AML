@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
 from src.bff.config import BASE_DIR
-from src.bff.schemas import EvalEntry, GenerateRequest, GenerateResponse
+from src.core.schemas import EvalEntry, GenerateRequest, GenerateResponse
 
 router = APIRouter()
 

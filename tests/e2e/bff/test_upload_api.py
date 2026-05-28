@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from src.bff.config import UPLOAD_DIR
-from src.file_processor.models import UploadedFiles
+from src.bff.config import get_upload_dir
+from src.core.models.uploaded_files import UploadedFiles
 
 
 @pytest_asyncio.fixture
@@ -22,7 +22,7 @@ async def seeded_retry_upload(seeded_session):
     seeded_session.add(upload)
     await seeded_session.commit()
 
-    staging_dir = UPLOAD_DIR / "staging" / upload_id
+    staging_dir = get_upload_dir() / "staging" / upload_id
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     val_df = pd.DataFrame([{

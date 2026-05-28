@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import shutil
 import tempfile
@@ -7,6 +8,8 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from alembic.command import stamp as alembic_stamp
+from alembic.config import Config as AlembicConfig
 from faker import Faker
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -15,12 +18,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import src.bff.database as db_mod
 from src.bff.app import lifespan
-from src.bff.models.customer import Customer
-from src.bff.models.account import Account
-from src.bff.config import UPLOAD_DIR
+from src.core.models.customer import Customer
+from src.core.models.account import Account
+from src.bff.config import get_upload_dir
+UPLOAD_DIR = get_upload_dir()
 from src.bff.database import Base, get_db
-from src.file_processor.models import RejectedRecord, Transaction, UploadedFiles
-from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
+from src.file_processor.models import RejectedRecord
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
+from src.core.models.enrichment_snapshot import EnrichmentSnapshot
+
+logging.getLogger("alembic").setLevel(logging.WARNING)
 
 fake = Faker()
 
@@ -55,6 +63,14 @@ async def engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Stamp Alembic so app lifespan's `alembic upgrade head` is a no-op
+    _alembic_cfg = AlembicConfig(str(Path("src/bff/alembic.ini").resolve()))
+    _alembic_cfg.set_main_option(
+        "script_location",
+        str(Path("src/bff/migrations").resolve()),
+    )
+    alembic_stamp(_alembic_cfg, "head")
+
     yield engine
 
     await engine.dispose()
@@ -78,7 +94,14 @@ async def session(engine):
 
 @pytest_asyncio.fixture
 async def seeded_session(engine):
-    async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as s:
+    maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    # Phase 1: cleanup-before + seed on a dedicated session
+    async with maker() as s:
+        for table in reversed(Base.metadata.sorted_tables):
+            await s.execute(table.delete())
+        await s.commit()
+
         now = datetime.now(UTC).isoformat()
         customers = [
             Customer(customer_id="CUST001", first_name="John", last_name="Doe",
@@ -109,10 +132,19 @@ async def seeded_session(engine):
         ]
         s.add_all(accounts)
         await s.commit()
+    # session closed → transaction committed → lock released
+
+    # Phase 2: yield a fresh session for the test
+    async with maker() as s:
         yield s
+    # test session closed (any pending changes rolled back → lock released)
+
+    # Phase 3: cleanup-after on yet another session to avoid StaleDataError
+    # from the test session's potentially dirty/pending objects.
+    async with maker() as cleaner:
         for table in reversed(Base.metadata.sorted_tables):
-            await s.execute(table.delete())
-        await s.commit()
+            await cleaner.execute(table.delete())
+        await cleaner.commit()
 
 
 @pytest_asyncio.fixture(autouse=True)

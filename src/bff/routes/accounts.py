@@ -3,8 +3,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bff.database import get_db
-from src.bff.models.account import Account
-from src.bff.schemas import AccountResponse
+from src.core.models.account import Account
+from src.core.schemas import AccountResponse
 
 router = APIRouter()
 

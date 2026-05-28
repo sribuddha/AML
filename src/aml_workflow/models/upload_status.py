@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.bff.database import Base
+from src.core.base import Base
 
 
 class UploadStatus(Base):

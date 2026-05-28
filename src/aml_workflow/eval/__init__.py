@@ -16,10 +16,6 @@ class PatternMetrics:
     recall: float = 0.0
     f1: float = 0.0
 
-    @property
-    def accuracy(self) -> float:
-        return self.recall  # recall = fraction of anomalous txns caught
-
 
 @dataclass
 class HallucinationResult:
@@ -75,13 +71,22 @@ class EvalReport:
 
 
 def _compute_metrics(total: int, flagged: int) -> tuple[float, float, float]:
-    """Compute precision, recall, and F1 for a binary classifier."""
+    """Compute precision, recall, and F1 given ground-truth count and correctly-flagged count.
+
+    Args:
+        total: Number of ground-truth items (anomalous transactions for a pattern).
+        flagged: Number of ground-truth items that were correctly flagged by the system.
+                 Must be <= total.
+
+    Returns:
+        (precision, recall, f1). When flagged <= total (the normal case),
+        precision = 1.0 (no false positives in this subset), recall = flagged / total.
+    """
     if total == 0:
         return 0.0, 0.0, 0.0
-    found = min(flagged, total)
-    tp = found
-    fp = flagged - found
-    fn = total - found
+    tp = min(flagged, total)
+    fn = total - tp
+    fp = flagged - tp
     precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
     recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0
     f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0

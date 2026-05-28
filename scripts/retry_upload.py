@@ -4,7 +4,7 @@ import asyncio
 from sqlalchemy import select
 
 from src.bff.database import async_session_factory
-from src.file_processor.models import UploadedFiles
+from src.core.models.uploaded_files import UploadedFiles
 from src.file_processor.service import retry_upload
 
 

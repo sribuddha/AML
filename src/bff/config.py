@@ -3,16 +3,32 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = Path(os.getenv("AML_DATA_DIR", str(BASE_DIR / "data")))
-UPLOAD_DIR = Path(os.getenv("AML_UPLOAD_DIR", str(DATA_DIR / "uploads")))
 
-DATABASE_URL = os.getenv("AML_DATABASE_URL", f"sqlite+aiosqlite:///{DATA_DIR / 'aml.db'}")
 
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+def _ensure_loaded() -> None:
+    if not hasattr(_ensure_loaded, "_loaded"):
+        _ensure_loaded._loaded = True
+        load_dotenv()
+
+
+def get_data_dir() -> Path:
+    _ensure_loaded()
+    d = Path(os.getenv("AML_DATA_DIR", str(BASE_DIR / "data")))
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_upload_dir() -> Path:
+    _ensure_loaded()
+    d = Path(os.getenv("AML_UPLOAD_DIR", str(get_data_dir() / "uploads")))
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def get_database_url() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_DATABASE_URL", f"sqlite+aiosqlite:///{get_data_dir() / 'aml.db'}")
 
 # ── Observability (Langfuse) ───────────────────────────────────
 

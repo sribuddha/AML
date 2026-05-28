@@ -3,9 +3,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bff.database import get_db
-from src.bff.models.account import Account
-from src.bff.schemas import PaginatedResponse, TransactionRowResponse
-from src.file_processor.models import Transaction
+from src.core.models.account import Account
+from src.core.schemas import PaginatedResponse, TransactionRowResponse
+from src.core.models.transaction import Transaction
 
 router = APIRouter()
 

@@ -4,10 +4,9 @@ from datetime import datetime, UTC
 
 from faker import Faker
 
-from src.aml_workflow.models.rule import Rule
-from src.bff.models.customer import Customer
-from src.bff.models.account import Account
-from src.bff.config import DATABASE_URL
+from src.core.models.rule import Rule
+from src.core.models.customer import Customer
+from src.core.models.account import Account
 from src.bff.database import Base, async_session_factory
 
 fake = Faker()

@@ -8,9 +8,10 @@ from sqlalchemy import select
 
 from src.aml_workflow.graph import create_workflow
 from src.aml_workflow.llm import SarResult, TriageDecision
-from src.aml_workflow.models.rule import Rule
-from src.aml_workflow.models.validation_result import ValidationResult
-from src.file_processor.models import Transaction, UploadedFiles
+from src.core.models.rule import Rule
+from src.core.models.validation_result import ValidationResult
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 
 @pytest.fixture
@@ -236,7 +237,7 @@ class TestSarNode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm)
         await workflow.ainvoke({"upload_id": upload_id})
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()
@@ -271,7 +272,7 @@ class TestSarNode:
         await seeded_session.commit()
         workflow = create_workflow(seeded_session, mock_llm_no_escalate)
         await workflow.ainvoke({"upload_id": upload_id})
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()
@@ -392,7 +393,7 @@ class TestStage1Mode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm, mode="stage1")
         await workflow.ainvoke({"upload_id": upload_id})
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()
@@ -417,7 +418,7 @@ class TestStage2Mode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm, mode="stage2")
         await workflow.ainvoke({"upload_id": upload_id})
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()
@@ -442,7 +443,7 @@ class TestFullMode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm, mode="full")
         await workflow.ainvoke({"upload_id": upload_id})
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()
@@ -469,7 +470,7 @@ class TestStage3Mode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm_escalate_then_clear, mode="full")
         await workflow.ainvoke({"upload_id": upload_id})
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         sars = (await seeded_session.execute(
             select(SAR).where(SAR.upload_id == upload_id)
         )).scalars().all()
@@ -503,7 +504,7 @@ class TestHumanReviewInterrupt:
     async def test_resume_after_all_sars_reviewed(self, seeded_session, seeded_upload, mock_llm):
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.types import Command
-        from src.aml_workflow.models.sar import SAR
+        from src.core.models.sar import SAR
         from sqlalchemy import select
 
         upload_id, _, _ = seeded_upload
@@ -579,7 +580,7 @@ class TestNodeRetryFailure:
         mock_llm.triage_batch.side_effect = ValueError("LLM not available")
         with pytest.raises(ValueError, match="LLM not available"):
             await run_validation(upload_id, seeded_session, llm=mock_llm, mode="stage2")
-        from src.file_processor.models import UploadedFiles
+        from src.core.models.uploaded_files import UploadedFiles
         upload = await seeded_session.get(UploadedFiles, upload_id)
         assert upload.status == "failed"
 

@@ -13,8 +13,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from src.bff.database import async_session_factory
-from src.file_processor.models import Transaction
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.transaction import Transaction
+from src.core.models.validation_result import ValidationResult
 
 
 def _load_eval(path: Path) -> list[dict]:

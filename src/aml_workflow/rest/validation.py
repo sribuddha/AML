@@ -2,16 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
-from src.bff.schemas import (
+from src.core.schemas import (
     PaginatedResponse,
     ValidationByTransactionResponse,
     ValidationDayItem,
     ValidationDetailItem,
     ValidationSummaryResponse,
 )
-from src.file_processor.models import Transaction, UploadedFiles
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 router = APIRouter()
 

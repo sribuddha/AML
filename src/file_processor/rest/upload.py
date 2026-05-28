@@ -8,7 +8,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.bff.config import UPLOAD_DIR, BASE_DIR
+from src.bff.config import BASE_DIR
 from src.bff.database import get_db
 from src.file_processor.service import REQUIRED_FIELDS, HEADER_ALIASES, process_upload, retry_upload
 
@@ -143,7 +143,7 @@ async def upload_from_work(
         eval_path = file_path.with_suffix(".eval")
     if eval_path.exists():
         from sqlalchemy import update as sa_update
-        from src.file_processor.models import UploadedFiles
+        from src.core.models.uploaded_files import UploadedFiles
         stmt = sa_update(UploadedFiles).where(UploadedFiles.id == upload_id).values(eval_file=str(eval_path))
         await db.execute(stmt)
         await db.commit()

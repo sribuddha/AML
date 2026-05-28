@@ -14,8 +14,9 @@ from src.aml_workflow.enrichment import (
     _parse_date,
     enrich_transactions,
 )
-from src.bff.models.account import Account
-from src.file_processor.models import Transaction, UploadedFiles
+from src.core.models.account import Account
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 
 class TestEnrichedContext:
@@ -286,7 +287,7 @@ async def test_enrich_dormancy_detected(seeded_session):
 
 @pytest.mark.asyncio
 async def test_enrichment_snapshot_created(seeded_session):
-    from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
+    from src.core.models.enrichment_snapshot import EnrichmentSnapshot
 
     now = datetime.now(UTC).isoformat()
     upload = UploadedFiles(id="u_snap", filename="test.csv", status="completed", created_at=now, updated_at=now)
@@ -356,7 +357,7 @@ async def test_enrich_velocity_skips_bad_dates(seeded_session):
 
 @pytest.mark.asyncio
 async def test_enrichment_snapshot_not_created_for_clean(seeded_session):
-    from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
+    from src.core.models.enrichment_snapshot import EnrichmentSnapshot
 
     txns = [{"customer_id": "CUST001", "status": "loaded"}]
     await enrich_transactions(seeded_session, txns, "upload-x")

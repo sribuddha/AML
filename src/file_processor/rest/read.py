@@ -5,13 +5,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bff.database import get_db
-from src.bff.schemas import (
+from src.core.schemas import (
     PaginatedResponse,
     RejectedRecordResponse,
     TransactionResponse,
     UploadSummaryResponse,
 )
-from src.file_processor.models import RejectedRecord, Transaction, UploadedFiles
+from src.file_processor.models import RejectedRecord
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 router = APIRouter()
 

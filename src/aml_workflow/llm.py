@@ -63,7 +63,7 @@ class LLMClient:
         if self.provider == "openai" and OPENAI_API_KEY:
             from openai import AsyncOpenAI
             raw_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
-            from src.aml_workflow.observability import wrap_openai_client
+            from src.core.observability import wrap_openai_client
             self._openai_client = wrap_openai_client(raw_client)
         elif self.provider == "gemini" and GEMINI_API_KEY:
             from google import genai
@@ -417,7 +417,7 @@ class LLMClient:
                 ),
             )
             return self._parse_triage_batch_response(resp.text, transactions)
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.error("Gemini triage batch failed: %s", e)
             return self._triage_fallback_batch(transactions, flag_details_list, rules, enriched_context_list)
 
@@ -454,7 +454,7 @@ class LLMClient:
                 ),
             )
             return self._parse_triage_batch_response(resp.text, transactions)
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.error("Gemini stage3 triage batch failed: %s", e)
             return self._triage_fallback_batch(transactions, flag_details_list, rules)
 
@@ -488,7 +488,7 @@ class LLMClient:
                 ),
             )
             return self._parse_sar_batch_response(resp.text, transactions, flag_details_list, triage_list)
-        except Exception as e:
+        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.error("Gemini SAR batch failed: %s", e)
             return self._sar_fallback_batch(transactions, flag_details_list, triage_list)
 

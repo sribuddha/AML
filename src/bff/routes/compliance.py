@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
-from src.aml_workflow.models.rule import Rule
-from src.aml_workflow.models.sar import SAR
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.enrichment_snapshot import EnrichmentSnapshot
+from src.core.models.rule import Rule
+from src.core.models.sar import SAR
+from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
-from src.bff.models.customer import Customer
-from src.bff.schemas import PendingSARResponse, PaginatedResponse
-from src.file_processor.models import Transaction
+from src.core.models.customer import Customer
+from src.core.schemas import PendingSARResponse, PaginatedResponse
+from src.core.models.transaction import Transaction
 
 router = APIRouter()
 

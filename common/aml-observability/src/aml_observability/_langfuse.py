@@ -54,7 +54,31 @@ class LangfuseBackend(ObservabilityBackend):
             return client
 
     def wrap_gemini(self, client: Any) -> Any:
-        return client
+        try:
+            self._get_lf()
+            import functools
+
+            from langfuse.decorators import observe, langfuse_context
+
+            original = client.aio.models.generate_content
+
+            @observe(as_type="generation")
+            @functools.wraps(original)
+            async def traced(model: str, contents: Any, **kwargs: Any) -> Any:
+                langfuse_context.update_current_generation(
+                    name="gemini_generate_content",
+                    model=model,
+                    input={"contents": contents, **kwargs},
+                )
+                result = await original(model, contents, **kwargs)
+                output = result.text if hasattr(result, "text") else str(result)
+                langfuse_context.update_current_generation(output=output)
+                return result
+
+            client.aio.models.generate_content = traced
+            return client
+        except Exception:
+            return client
 
     def shutdown(self) -> None:
         try:

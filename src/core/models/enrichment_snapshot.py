@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.bff.database import Base
+from src.core.base import Base
 
 
 class EnrichmentSnapshot(Base):

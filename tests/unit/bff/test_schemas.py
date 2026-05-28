@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from src.bff.schemas import (
+from src.core.schemas import (
     PaginatedResponse,
     RejectedRecordResponse,
     RuleCreate,

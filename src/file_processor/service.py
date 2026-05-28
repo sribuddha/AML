@@ -10,12 +10,13 @@ import pandas as pd
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.bff.models.account import Account
-from src.bff.models.customer import Customer
-from src.bff.config import UPLOAD_DIR
-from src.file_processor.models import RejectedRecord, Transaction, UploadedFiles
-from src.aml_workflow.models.upload_status import UploadStatus
-from src.aml_workflow.models.transaction_status import TransactionStatus
+from src.core.models.account import Account
+from src.core.models.customer import Customer
+from src.bff.config import get_upload_dir
+from src.file_processor.models import RejectedRecord
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
+from src.aml_workflow.services import record_transaction_status
 
 CHUNK_SIZE = int(os.environ.get("AML_CHUNK_SIZE", "10000"))
 
@@ -163,7 +164,7 @@ async def process_upload(
     now = datetime.now(UTC).isoformat()
     total_rows = len(df)
 
-    staging_dir = UPLOAD_DIR / "staging" / upload_id
+    staging_dir = get_upload_dir() / "staging" / upload_id
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     if content:
@@ -173,6 +174,10 @@ async def process_upload(
     accepted: list[dict] = []
     rejected_preview: list[dict] = []
     fail_lines: list[str] = []
+
+    pending: list[tuple[int, dict]] = []
+    pending_account_ids: set[str] = set()
+    pending_customer_ids: set[str] = set()
 
     for idx, row in df.iterrows():
         reasons: list[str] = []
@@ -218,22 +223,33 @@ async def process_upload(
         cleaned = {field: _trim_cell(str(row.get(field, ""))) for field in REQUIRED_FIELDS}
         cleaned["amount"] = amount_val
 
+        pending_account_ids.add(cleaned["account_id"])
+        pending_customer_ids.add(cleaned["customer_id"])
+        pending.append((idx, dict(row), cleaned, amount_val))
+
+    # Batch FK lookups: two queries instead of N*2
+    valid_account_ids: set[str] = set()
+    if pending_account_ids:
+        acct_rows = await db.execute(
+            select(Account.account_id).where(Account.account_id.in_(list(pending_account_ids)))
+        )
+        valid_account_ids = {r[0] for r in acct_rows.fetchall()}
+
+    valid_customer_ids: set[str] = set()
+    if pending_customer_ids:
+        cust_rows = await db.execute(
+            select(Customer.customer_id).where(Customer.customer_id.in_(list(pending_customer_ids)))
+        )
+        valid_customer_ids = {r[0] for r in cust_rows.fetchall()}
+
+    for idx, orig_row, cleaned, amount_val in pending:
+        reasons: list[str] = []
         account_id = cleaned["account_id"]
         customer_id = cleaned["customer_id"]
 
-        existing_account = await db.execute(
-            select(Account).where(Account.account_id == account_id)
-        )
-        existing_account = existing_account.scalar_one_or_none()
-
-        existing_customer = await db.execute(
-            select(Customer).where(Customer.customer_id == customer_id)
-        )
-        existing_customer = existing_customer.scalar_one_or_none()
-
-        if existing_account is None:
+        if account_id not in valid_account_ids:
             reasons.append("account_id not found")
-        if existing_customer is None:
+        if customer_id not in valid_customer_ids:
             reasons.append("customer_id not found")
 
         location_raw = cleaned.get("location", "")
@@ -244,24 +260,24 @@ async def process_upload(
             city_name, state_name, country_name = loc_entry
 
         if reasons:
-            fail_entry = {"row_index": idx, "raw_data": dict(row), "reasons": reasons}
+            fail_entry = {"row_index": idx, "raw_data": orig_row, "reasons": reasons}
             rejected.append(fail_entry)
             fail_lines.append(json.dumps(fail_entry))
             if len(rejected_preview) < 10:
-                clean_raw = _clean_nan(dict(row))
+                clean_raw = _clean_nan(orig_row)
                 rejected_preview.append({"row": idx, "raw_data": clean_raw, "reasons": reasons})
             continue
 
         accepted.append({
             "account_id": account_id,
             "customer_id": customer_id,
-            "amount": _safe_float(amount_val),
+            "amount": amount_val,
             "counterparty": cleaned.get("counterparty", ""),
             "city": city_name,
             "state": state_name,
             "country": country_name,
             "date": cleaned.get("date", ""),
-            "source_txn_id": str(row.get("source_txn_id", f"TXN-{idx:06d}")),
+            "source_txn_id": str(orig_row.get("source_txn_id", f"TXN-{idx:06d}")),
             "created_at": now,
             "updated_at": now,
         })
@@ -282,12 +298,8 @@ async def process_upload(
     )
     db.add(upload_obj)
 
-    db.add(UploadStatus(
-        upload_id=upload_id,
-        status="uploaded",
-        actor="system",
-        created_at=now,
-    ))
+    from src.aml_workflow.services import _set_upload_status
+    await _set_upload_status(db, upload_id, "uploaded")
 
     await db.flush()
 
@@ -331,14 +343,8 @@ async def process_upload(
                 db.add(chunk_row)
             await db.flush()
 
-        # Status entry for each created transaction
         for obj in txn_objs:
-            db.add(TransactionStatus(
-                transaction_id=obj.id,
-                status="loaded",
-                actor="system",
-                created_at=now,
-            ))
+            await record_transaction_status(db, obj.id, "loaded")
         await db.flush()
 
     for rej in rejected:
@@ -383,7 +389,7 @@ async def retry_upload(upload_id: str, db: AsyncSession):
     if upload is None:
         raise ValueError("Upload not found")
 
-    staging_dir = UPLOAD_DIR / "staging" / upload_id
+    staging_dir = get_upload_dir() / "staging" / upload_id
     if not staging_dir.exists():
         raise ValueError(f"Staging directory not found: {staging_dir}")
 

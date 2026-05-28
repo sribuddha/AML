@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
-from src.file_processor.models import UploadedFiles
+from src.core.models.uploaded_files import UploadedFiles
 
 router = APIRouter()
 

@@ -242,7 +242,7 @@ Every CSV upload follows this workflow in `process_upload`:
 
 1. **Generate UUID** — Router generates `upload_id` (`uuid.uuid4()`) before any DB or disk operation.
 2. **Parse & normalize** — CSV bytes parsed via `BytesIO` + pandas. Column names normalized via `HEADER_ALIASES` dict (maps e.g. "acct" → "account_id", "amt" → "amount", "cp" → "counterparty", "loc" → "location", "txn_date" → "date"). Missing required columns (`account_id`, `customer_id`, `amount`, `counterparty`, `location`, `date`) return HTTP 400. The `source_txn_id` column is preserved if present; otherwise auto-generated as `TXN-{index:06d}`.
-3. **Save original** — Raw bytes written to `{UPLOAD_DIR}/staging/{upload_id}/{filename}.orig`.
+3. **Save original** — Raw bytes written to `{get_upload_dir()}/staging/{upload_id}/{filename}.orig`.
 4. **Validate each row** — For every row:
    - NaN check on all 6 required fields → `{field} is required`
    - Missing/blank `account_id` or `customer_id` → `Missing {field}`
@@ -360,7 +360,7 @@ Without a checkpointer, `interrupt()` still pauses but cannot resume — the gra
 **File:** `src/aml_workflow/eval/`
 
 - **5 fraud patterns:** structuring, velocity, impossible_travel, round_trip, watchlist
-- **Detection metrics:** precision, recall, F1 per pattern (via `_compute_metrics` — uses total/flagged counts with tp = min(flagged, total))
+- **Detection metrics:** precision, recall, F1 per pattern (via `_compute_metrics` — uses ground-truth count vs correctly-flagged count)
 - **Hallucination check (`hallucination.py`):** Extracts `$`-prefixed numbers and capitalized entities from SAR narrative; verifies against evidence set (transaction fields + formatted amounts + rule names). 0.01 tolerance for numeric comparisons.
 - **Completeness check (`completeness.py`):** For each triggered rule, checks if key words (>3 chars) from the rule name appear in the SAR narrative.
 - **EvalReport:** Includes overall metrics, hallucination-free rate, average completeness, per-pattern breakdown.
@@ -885,7 +885,7 @@ None. No internal company packages are consumed.
 ## 11. Security Considerations
 
 - **No authentication:** The application has no login, no API keys, no JWT, no bearer tokens, and no role-based access. Every endpoint is fully open. Explicitly deferred to v2.
-- **CORS:** Wildcard CORS (`allow_origins=["*"]`, all methods, all headers) — acceptable for local single-user use, but would need tightening for any multi-user or network-exposed deployment.
+- **CORS:** Wildcard CORS (`allow_origins=["*"]`, all methods, all headers, `allow_credentials` omitted since browsers reject `*` + `credentials=true`) — acceptable for local single-user use, but would need tightening for any multi-user or network-exposed deployment.
 - **LLM API keys:** `AML_OPENAI_API_KEY` and `AML_GEMINI_API_KEY` are passed directly to the respective SDKs. They are read from environment variables / `.env` file and never logged.
 - **SQL injection:** No raw SQL. All queries use SQLAlchemy ORM with parameterized queries.
 - **Input validation:** File extension check (`.csv` only), column presence check, row-level structural validation (required fields, types, FK lookups). No executable content is accepted.
@@ -955,7 +955,7 @@ No log rotation, no JSON logging, no structured logging framework. No external l
 - [ ] **Reference data endpoints for customers/accounts:** The API spec lists `GET /api/customers` and `GET /api/accounts` but no router registers these routes (only `sar.py`, `rules.py`, `audit.py`, `validation.py`, `upload.py`, `read.py`, `reprocess.py` are registered in `app.py`).
 - [ ] **Gemini `google-genai` package name:** The actual PyPI package for Gemini is `google-genai` (not `google-generativeai`). Verifying correct package name in docs.
 - [ ] **HRM (Human Review Mode):** The `category` column on `validation_result` is never written — should it be populated during triage?
-- [ ] **Eval metrics precision formula:** `_compute_metrics` uses `tp = min(flagged, total)` — this assumes all flagged positives are from the anomalous set, which may overstate precision when non-anomalous transactions are also flagged. Is this the intended approximation?
+- [x] **Eval metrics precision formula:** Fixed — `_compute_metrics` now uses `tp = min(flagged, total)` with clarified semantics. The function accepts (total ground-truth, correctly-flagged count). Callers that need full tp/fp/fn accounting should compute directly.
 
 ---
 

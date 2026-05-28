@@ -5,12 +5,14 @@ import shutil
 from sqlalchemy import delete, select
 
 from src.aml_workflow.models.audit_log import AuditLog
-from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
-from src.aml_workflow.models.sar import SAR
-from src.aml_workflow.models.validation_result import ValidationResult
+from src.core.models.enrichment_snapshot import EnrichmentSnapshot
+from src.core.models.sar import SAR
+from src.core.models.validation_result import ValidationResult
 from src.bff.config import UPLOAD_DIR
 from src.bff.database import async_session_factory
-from src.file_processor.models import RejectedRecord, Transaction, UploadedFiles
+from src.file_processor.models import RejectedRecord
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 
 
 async def delete_upload(upload_id: str):

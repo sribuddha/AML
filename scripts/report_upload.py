@@ -11,10 +11,11 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from src.file_processor.models import Transaction, UploadedFiles
-from src.aml_workflow.models.validation_result import ValidationResult
-from src.aml_workflow.models.sar import SAR
-from src.aml_workflow.models.enrichment_snapshot import EnrichmentSnapshot
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
+from src.core.models.validation_result import ValidationResult
+from src.core.models.sar import SAR
+from src.core.models.enrichment_snapshot import EnrichmentSnapshot
 from src.bff.database import async_session_factory
 
 

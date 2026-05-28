@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 
 from src.bff.database import get_db
 from src.bff.app import app
-from src.file_processor.models import UploadedFiles, Transaction
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
 from src.file_processor.service import process_upload
 from tests.helpers import upload_csv
 

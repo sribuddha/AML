@@ -7,8 +7,9 @@ from src.bff.database import Base
 
 config = context.config
 
-from src.bff.config import DATABASE_URL  # noqa: E402
-config.set_main_option("sqlalchemy.url", DATABASE_URL.replace("+aiosqlite", ""))
+from src.bff.config import get_database_url  # noqa: E402
+_db_url = get_database_url()
+config.set_main_option("sqlalchemy.url", _db_url.replace("+aiosqlite", ""))
 
 target_metadata = Base.metadata
 
@@ -32,7 +33,7 @@ def do_run_migrations(connection):
 
 
 def run_migrations_online() -> None:
-    connectable = create_engine(DATABASE_URL.replace("+aiosqlite", ""))
+    connectable = create_engine(_db_url.replace("+aiosqlite", ""))
     with connectable.connect() as connection:
         do_run_migrations(connection)
     connectable.dispose()
