@@ -58,6 +58,15 @@ let mockGet = vi.fn();
 let mockPatch = vi.fn();
 let mockPost = vi.fn();
 
+const mockToast = vi.hoisted(() => {
+  const t = vi.fn();
+  t.success = vi.fn();
+  t.error = vi.fn();
+  t.info = vi.fn();
+  t.warning = vi.fn();
+  return t;
+});
+
 vi.mock("../api/client", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
@@ -72,6 +81,8 @@ vi.mock("../api/client", () => ({
     }
   },
 }));
+
+vi.mock("../lib/toast", () => ({ toast: mockToast }));
 
 function renderPage(customerId = "CUST001") {
   return render(
@@ -96,6 +107,9 @@ describe("CustomerDetailPage", () => {
     mockGet.mockReset();
     mockPatch.mockReset();
     mockPost.mockReset();
+    mockToast.mockClear();
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
     mockGet.mockImplementation(mockGetImpl);
   });
 
@@ -179,7 +193,7 @@ describe("CustomerDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Charlie Brown")).toBeInTheDocument();
     });
-    const dashes = screen.getAllByText("—");
+    const dashes = screen.getAllByText("\u2014");
     expect(dashes.length).toBeGreaterThanOrEqual(3);
     expect(screen.getByText("Accounts (0)")).toBeInTheDocument();
     expect(screen.getByText("No accounts found for this customer.")).toBeInTheDocument();
@@ -247,7 +261,7 @@ describe("CustomerDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Accounts (1)")).toBeInTheDocument();
     });
-    const dashes = screen.getAllByText("—");
+    const dashes = screen.getAllByText("\u2014");
     expect(dashes.length).toBeGreaterThanOrEqual(1);
   });
 
@@ -360,8 +374,7 @@ describe("CustomerDetailPage", () => {
     dispatchSpy.mockRestore();
   });
 
-  it("shows alert on batch review error", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+  it("calls toast.error on batch review error", async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes("/api/sar/pending")) return Promise.resolve(mockSarsResponse);
       return Promise.resolve(mockCustomer);
@@ -375,13 +388,11 @@ describe("CustomerDetailPage", () => {
     fireEvent.click(selectAll);
     fireEvent.click(screen.getByText("Accept All"));
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith("Batch failed");
+      expect(mockToast.error).toHaveBeenCalledWith("Batch failed");
     });
-    alertSpy.mockRestore();
   });
 
-  it("shows alert on individual review error", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+  it("calls toast.error on individual review error", async () => {
     mockGet.mockImplementation((url: string) => {
       if (url.includes("/api/sar/pending")) return Promise.resolve(mockSarsResponse);
       return Promise.resolve(mockCustomer);
@@ -393,9 +404,8 @@ describe("CustomerDetailPage", () => {
     });
     fireEvent.click(screen.getByText("Confirm"));
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith("Review failed");
+      expect(mockToast.error).toHaveBeenCalledWith("Review failed");
     });
-    alertSpy.mockRestore();
   });
 
   it("clicks Back to customers in error state", async () => {

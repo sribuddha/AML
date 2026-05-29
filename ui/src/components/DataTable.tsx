@@ -21,6 +21,9 @@ interface DataTableProps<T> {
   perPage?: number;
   total?: number;
   onPageChange?: (page: number) => void;
+  onSort?: (key: string, dir: "asc" | "desc") => void;
+  sortBy?: string | null;
+  sortDir?: "asc" | "desc" | null;
 }
 
 function compareValue(a: unknown, b: unknown): number {
@@ -94,24 +97,40 @@ function renderBody<T>(columns: Column<T>[], _data: T[], loading: boolean | unde
 export default function DataTable<T = any>({
   columns, data, loading, emptyMessage = "No data found", error, onRetry,
   page, perPage, total, onPageChange,
+  onSort, sortBy: externalSortBy, sortDir: externalSortDir,
 }: DataTableProps<T>) {
-  const [sortBy, setSortBy] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<"asc" | "desc" | null>(null);
+  const isServerSort = onSort !== undefined;
+  const [localSortBy, setLocalSortBy] = useState<string | null>(null);
+  const [localSortDir, setLocalSortDir] = useState<"asc" | "desc" | null>(null);
+
+  const sortBy = isServerSort ? (externalSortBy ?? null) : localSortBy;
+  const sortDir = isServerSort ? (externalSortDir ?? null) : localSortDir;
 
   const displayed = useMemo(() => {
     if (!sortBy || !sortDir) return data;
+    if (isServerSort) return data;
     return sortData(data, sortBy, sortDir);
-  }, [data, sortBy, sortDir]);
+  }, [data, sortBy, sortDir, isServerSort]);
 
   const handleSort = (key: string) => {
-    if (sortBy !== key) {
-      setSortBy(key);
-      setSortDir("asc");
-    } else if (sortDir === "asc") {
-      setSortDir("desc");
-    } else if (sortDir === "desc") {
-      setSortBy(null);
-      setSortDir(null);
+    if (isServerSort) {
+      if (externalSortBy !== key) {
+        onSort(key, "asc");
+      } else if (externalSortDir === "asc") {
+        onSort(key, "desc");
+      } else if (externalSortDir === "desc") {
+        onSort(key, "asc");
+      }
+      return;
+    }
+    if (localSortBy !== key) {
+      setLocalSortBy(key);
+      setLocalSortDir("asc");
+    } else if (localSortDir === "asc") {
+      setLocalSortDir("desc");
+    } else if (localSortDir === "desc") {
+      setLocalSortBy(null);
+      setLocalSortDir(null);
     }
   };
 

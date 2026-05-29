@@ -1,6 +1,7 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import Toaster from "./Toaster";
 import type { PaginatedResponse } from "../types";
 
 function isOpsActive(pathname: string) {
@@ -130,6 +131,7 @@ export default function Layout() {
         <div className="px-8 py-6">
           <Outlet />
         </div>
+        <Toaster />
       </main>
     </div>
   );

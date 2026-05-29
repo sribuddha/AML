@@ -215,10 +215,26 @@
 - Prompts were hardened (temperature=0, removed self-circumvention escape hatches, removed "legitimate explanations" loophole, added explicit structuring instruction) but the gap persists
 - Potential next steps: add rule-based hard-block (stage2 auto-escalate for certain patterns), fine-tune prompts further, or add a fourth triage stage focused on structuring/offshore patterns
 
+### Frontend Design System Refactoring (✅ Done)
+- **13 new shared files**: `cn.ts`, `toast.ts`, `Toaster.tsx`, `ConfirmDialog.tsx`, `ErrorBoundary.tsx`, `NotFoundPage.tsx`, `PageShell.tsx`, `TabSet.tsx`, `SearchForm.tsx`, `EvalModal.tsx`, `useSarReview.ts`, `SarReviewPanel.tsx`
+- **Extracted components**: `PageShell` (standard heading/description layout), `SearchForm` (data-driven filter forms), `TabSet` (tab navigation), `EvalModal` (self-contained eval report), `ConfirmDialog` (replaces `window.confirm`), `SarReviewPanel` + `useSarReview` hook (shared SAR review UI between CompliancePage and CustomerDetailPage)
+- **Toast system**: Imperative `toast()` / `toast.success()` / `toast.error()` API replaces all `alert()` calls — accessible, non-blocking, uniform
+- **DataTable**: Added `onSort`/`sortBy`/`sortDir` props for server-sort support, backward-compatible
+- **All 8 pages refactored**: HomePage, TransactionsPage, CustomersPage, CustomerDetailPage, CompliancePage, OperationsPage, RulesPage, TestPage — all use shared components
+- **Deleted**: `App.css` (184 lines of unused boilerplate)
+- **TypeScript**: Compiles clean (`npx tsc --noEmit` passes)
+
 ### Vitest + Unit Tests (✅ Done)
-- **266 tests across 16 files** — all passing
-- **Coverage: 93.71% statements, 96.27% lines** (component/page coverage)
-- Covers all 7 pages + all 5 components + API client
+- **302 tests across 20 files** — all passing
+- **Coverage: 97.09% statements, 98.42% lines, 86.63% branches, 95.34% functions**
+- Files now at 100%: `toast.ts`, `Toaster.tsx`, `ErrorBoundary.tsx`, `NotFoundPage.tsx`, `cn.ts`
+- Test files added:
+  - `src/lib/toast.test.ts` — subscribe/dispatch, variants, object arg, unsubscribe, unique IDs (11 tests)
+  - `src/components/Toaster.test.tsx` — render, dismiss, multiple toasts, variant styles (9 tests)
+  - `src/components/ErrorBoundary.test.tsx` — default/custom fallback, onError, reset (6 tests)
+  - `src/pages/NotFoundPage.test.tsx` — 404 heading, page message, Go home link (4 tests)
+- New DataTable server-sort tests (5 tests for onSort prop coverage)
+- Extended CompliancePage batch-review tests to cover success-toast path
 - Commands: `npm test`, `npm run test:watch`, `npm run test:coverage`
 - Run from `ui/` directory
 

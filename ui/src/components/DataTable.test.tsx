@@ -170,4 +170,41 @@ describe("DataTable", () => {
     render(<DataTable columns={cols} data={items} />);
     expect(screen.getByText("-")).toBeInTheDocument();
   });
+
+  describe("server-sort (onSort prop)", () => {
+    it("calls onSort with key and asc on first click", () => {
+      const onSort = vi.fn();
+      render(<DataTable columns={columns} data={data} onSort={onSort} sortBy={null} sortDir={null} />);
+      fireEvent.click(screen.getByText("Name"));
+      expect(onSort).toHaveBeenCalledWith("name", "asc");
+    });
+
+    it("calls onSort with desc on second click", () => {
+      const onSort = vi.fn();
+      render(<DataTable columns={columns} data={data} onSort={onSort} sortBy={"name"} sortDir={"asc"} />);
+      fireEvent.click(screen.getByText("Name"));
+      expect(onSort).toHaveBeenCalledWith("name", "desc");
+    });
+
+    it("calls onSort with asc on third click (cycles)", () => {
+      const onSort = vi.fn();
+      render(<DataTable columns={columns} data={data} onSort={onSort} sortBy={"name"} sortDir={"desc"} />);
+      fireEvent.click(screen.getByText("Name"));
+      expect(onSort).toHaveBeenCalledWith("name", "asc");
+    });
+
+    it("does not sort data internally when server-sort is active", () => {
+      const onSort = vi.fn();
+      render(<DataTable columns={columns} data={data} onSort={onSort} sortBy={null} sortDir={null} />);
+      const rows = screen.getAllByRole("row");
+      expect(rows[1]).toHaveTextContent("Charlie");
+      expect(rows[2]).toHaveTextContent("Alice");
+      expect(rows[3]).toHaveTextContent("Bob");
+    });
+
+    it("shows sort indicator from external sortDir", () => {
+      render(<DataTable columns={columns} data={data} onSort={vi.fn()} sortBy={"value"} sortDir={"desc"} />);
+      expect(screen.getByText("▼")).toBeInTheDocument();
+    });
+  });
 });

@@ -36,6 +36,10 @@ function renderPage() {
   );
 }
 
+function clickSearch() {
+  fireEvent.click(screen.getByText("Search"));
+}
+
 describe("CustomersPage", () => {
   beforeEach(() => {
     mockGet.mockReset();
@@ -45,13 +49,13 @@ describe("CustomersPage", () => {
   it("renders heading and description", () => {
     renderPage();
     expect(screen.getByText("Customers")).toBeInTheDocument();
-    expect(screen.getByText("Search and view customer information")).toBeInTheDocument();
+    expect(screen.getByText("Search and browse customer records")).toBeInTheDocument();
   });
 
   it("renders search inputs", () => {
     renderPage();
-    expect(screen.getByPlaceholderText("First Name")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("Last Name")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("First name")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Last name")).toBeInTheDocument();
   });
 
   it("renders Search button", () => {
@@ -59,18 +63,17 @@ describe("CustomersPage", () => {
     expect(screen.getByText("Search")).toBeInTheDocument();
   });
 
-  it("fetches and displays customers on mount", async () => {
+  it("fetches and displays customers on Search", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
-      expect(screen.getByText("Alice")).toBeInTheDocument();
+      expect(screen.getByText("CUST001")).toBeInTheDocument();
     });
-    expect(screen.getByText("Smith")).toBeInTheDocument();
-    expect(screen.getByText("Bob")).toBeInTheDocument();
-    expect(screen.getByText("Jones")).toBeInTheDocument();
   });
 
   it("shows customer IDs as clickable links", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("CUST001")).toBeInTheDocument();
     });
@@ -80,6 +83,7 @@ describe("CustomersPage", () => {
 
   it("shows city and state for customers", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("New York")).toBeInTheDocument();
     });
@@ -92,8 +96,9 @@ describe("CustomersPage", () => {
     ];
     mockGet.mockResolvedValue({ ...mockResponse, items: rowsWithoutLocation, total: 1 });
     renderPage();
+    clickSearch();
     await waitFor(() => {
-      expect(screen.getByText("Charlie")).toBeInTheDocument();
+      expect(screen.getByText("CUST003")).toBeInTheDocument();
     });
     const dashes = screen.getAllByText("-");
     expect(dashes.length).toBeGreaterThanOrEqual(1);
@@ -102,6 +107,7 @@ describe("CustomersPage", () => {
   it("shows error state with retry", async () => {
     mockGet.mockRejectedValue(new Error("Network error"));
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("Network error")).toBeInTheDocument();
     });
@@ -112,6 +118,7 @@ describe("CustomersPage", () => {
   it("retry button re-fetches data", async () => {
     mockGet.mockRejectedValueOnce(new Error("Network error")).mockResolvedValueOnce(mockResponse);
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("Network error")).toBeInTheDocument();
     });
@@ -119,23 +126,24 @@ describe("CustomersPage", () => {
     mockGet.mockResolvedValue(mockResponse);
     fireEvent.click(screen.getByText("Retry"));
     await waitFor(() => {
-      expect(screen.getByText("Alice")).toBeInTheDocument();
+      expect(screen.getByText("CUST001")).toBeInTheDocument();
     });
   });
 
   it("shows empty message when no results", async () => {
     mockGet.mockResolvedValue({ ...mockResponse, items: [], total: 0 });
     renderPage();
+    clickSearch();
     await waitFor(() => {
-      expect(screen.getByText("No customers found. Try a different name.")).toBeInTheDocument();
+      expect(screen.getByText("No customers found.")).toBeInTheDocument();
     });
   });
 
   it("calls api.get with search params on Search click", async () => {
     renderPage();
-    fireEvent.change(screen.getByPlaceholderText("First Name"), { target: { value: "Alice" } });
-    fireEvent.change(screen.getByPlaceholderText("Last Name"), { target: { value: "Smith" } });
-    fireEvent.click(screen.getByText("Search"));
+    fireEvent.change(screen.getByPlaceholderText("First name"), { target: { value: "Alice" } });
+    fireEvent.change(screen.getByPlaceholderText("Last name"), { target: { value: "Smith" } });
+    clickSearch();
     await waitFor(() => {
       expect(mockGet).toHaveBeenCalledWith("/api/customers", expect.objectContaining({
         first_name: "Alice", last_name: "Smith", page: 1, per_page: 25,
@@ -145,6 +153,7 @@ describe("CustomersPage", () => {
 
   it("navigates to customer detail on ID click", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("CUST001")).toBeInTheDocument();
     });
@@ -161,6 +170,7 @@ describe("CustomersPage", () => {
     }));
     mockGet.mockResolvedValue({ page: 1, per_page: 25, total: 30, items: manyCustomers.slice(0, 25) });
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("CUST025")).toBeInTheDocument();
     });

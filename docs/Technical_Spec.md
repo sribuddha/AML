@@ -114,7 +114,7 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 
 ### Key Components
 
-- **UI (React):** File upload, dashboard, rule editor (future build — not yet implemented).
+- **UI (React):** File upload, dashboard, rule editor, compliance review, SAR management, test data generator — all implemented (see `docs/UI_Technical_Spec.md`).
 
 - **BFF (FastAPI):** Single backend — file processing (CSV parse, structural validation, accepted/rejected routing), rules CRUD, BFF endpoints for UI consumption, and orchestration of AML_Workflow trigger. 19 REST endpoints under `/api`. Uses `Base` from `src.core.base`, schemas from `src.core.schemas`, and models from `src.core.models`.
 

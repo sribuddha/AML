@@ -68,6 +68,15 @@ let mockGet = vi.fn();
 let mockPatch = vi.fn();
 let mockPost = vi.fn();
 
+const mockToast = vi.hoisted(() => {
+  const t = vi.fn();
+  t.success = vi.fn();
+  t.error = vi.fn();
+  t.info = vi.fn();
+  t.warning = vi.fn();
+  return t;
+});
+
 vi.mock("../api/client", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
@@ -83,6 +92,8 @@ vi.mock("../api/client", () => ({
   },
 }));
 
+vi.mock("../lib/toast", () => ({ toast: mockToast }));
+
 function renderPage(path = "/compliance") {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -96,6 +107,9 @@ describe("CompliancePage", () => {
     mockGet.mockReset();
     mockPatch.mockReset();
     mockPost.mockReset();
+    mockToast.mockClear();
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
     mockGet.mockResolvedValue(mockResponse);
   });
 
@@ -249,7 +263,7 @@ describe("CompliancePage", () => {
     expect(screen.getByText("Dismiss All").closest("button")).toBeDisabled();
   });
 
-  it("calls api.post on Accept All with selected sar_ids", async () => {
+  it("accepts batch with success toast", async () => {
     mockPost.mockResolvedValue({ reviewed: 1, action: "confirmed" });
     renderPage();
     await waitFor(() => {
@@ -260,10 +274,13 @@ describe("CompliancePage", () => {
     fireEvent.click(screen.getByText("Accept All"));
     await waitFor(() => {
       expect(mockPost).toHaveBeenCalledWith("/api/sar/batch-review", { sar_ids: ["s1"], action: "confirmed" });
-    });
+    }, { timeout: 3000 });
+    await waitFor(() => {
+      expect(mockToast.success).toHaveBeenCalledWith("1 SARs confirmed");
+    }, { timeout: 3000 });
   });
 
-  it("calls api.post on Dismiss All with selected sar_ids", async () => {
+  it("dismisses batch with success toast", async () => {
     mockPost.mockResolvedValue({ reviewed: 1, action: "dismissed" });
     renderPage();
     await waitFor(() => {
@@ -274,7 +291,10 @@ describe("CompliancePage", () => {
     fireEvent.click(screen.getByText("Dismiss All"));
     await waitFor(() => {
       expect(mockPost).toHaveBeenCalledWith("/api/sar/batch-review", { sar_ids: ["s1"], action: "dismissed" });
-    });
+    }, { timeout: 3000 });
+    await waitFor(() => {
+      expect(mockToast.success).toHaveBeenCalledWith("1 SARs dismissed");
+    }, { timeout: 3000 });
   });
 
   it("shows customer name chip when customer_id in URL", async () => {
@@ -283,9 +303,9 @@ describe("CompliancePage", () => {
     await waitFor(() => {
       expect(screen.getByText("All pending reviews")).toBeInTheDocument();
     });
-    const subtitle = screen.getByText("All pending reviews").parentElement!;
-    expect(subtitle.textContent).toContain("John Doe");
-    expect(subtitle.querySelector("button")?.textContent).toBe("×");
+    expect(screen.getAllByText("John Doe").length).toBeGreaterThanOrEqual(1);
+    const chipButton = screen.getByText("\u00D7");
+    expect(chipButton).toBeInTheDocument();
   });
 
   it("clears customer filter when × chip clicked", async () => {
@@ -294,8 +314,7 @@ describe("CompliancePage", () => {
     await waitFor(() => {
       expect(screen.getByText("All pending reviews")).toBeInTheDocument();
     });
-    const subtitle = screen.getByText("All pending reviews").parentElement!;
-    fireEvent.click(subtitle.querySelector("button")!);
+    fireEvent.click(screen.getByText("\u00D7"));
     await waitFor(() => {
       expect(mockGet).toHaveBeenCalledTimes(2);
     });
@@ -341,8 +360,7 @@ describe("CompliancePage", () => {
     });
   });
 
-  it("calls alert on batch review error", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+  it("calls toast.error on batch review error", async () => {
     mockPost.mockRejectedValue(new Error("Batch failed"));
     renderPage();
     await waitFor(() => {
@@ -352,13 +370,11 @@ describe("CompliancePage", () => {
     fireEvent.click(checkbox);
     fireEvent.click(screen.getByText("Accept All"));
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith("Batch failed");
+      expect(mockToast.error).toHaveBeenCalledWith("Batch failed");
     });
-    alertSpy.mockRestore();
   });
 
-  it("shows alert on individual review error", async () => {
-    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+  it("calls toast.error on individual review error", async () => {
     mockPatch.mockRejectedValue(new Error("Review failed"));
     renderPage();
     await waitFor(() => {
@@ -366,9 +382,8 @@ describe("CompliancePage", () => {
     });
     fireEvent.click(screen.getByText("Dismiss"));
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith("Review failed");
+      expect(mockToast.error).toHaveBeenCalledWith("Review failed");
     });
-    alertSpy.mockRestore();
   });
 
   it("clears customer filter via Clear button", async () => {

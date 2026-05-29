@@ -12,9 +12,9 @@ function renderPage() {
 }
 
 describe("HomePage", () => {
-  it("renders Dashboard heading", () => {
+  it("renders AML Monitor heading", () => {
     renderPage();
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("AML Monitor")).toBeInTheDocument();
   });
 
   it("renders all 5 navigation cards", () => {
@@ -28,7 +28,7 @@ describe("HomePage", () => {
 
   it("renders subtitle", () => {
     renderPage();
-    expect(screen.getByText("Select a module to get started")).toBeInTheDocument();
+    expect(screen.getByText("Anti-Money Laundering Transaction Monitoring System")).toBeInTheDocument();
   });
 
   it("links to correct routes", () => {
@@ -52,9 +52,9 @@ describe("HomePage", () => {
   it("renders descriptions for each card", () => {
     renderPage();
     expect(screen.getByText(/Review suspicious activity reports/)).toBeInTheDocument();
-    expect(screen.getByText(/Upload and manage transaction data/)).toBeInTheDocument();
-    expect(screen.getByText(/Configure detection rules/)).toBeInTheDocument();
-    expect(screen.getByText(/Browse customer profiles/)).toBeInTheDocument();
-    expect(screen.getByText(/View and search all processed/)).toBeInTheDocument();
+    expect(screen.getByText(/Upload transaction files/)).toBeInTheDocument();
+    expect(screen.getByText(/Manage AML detection rules/)).toBeInTheDocument();
+    expect(screen.getByText(/Search and view customer profiles/)).toBeInTheDocument();
+    expect(screen.getByText(/Browse and search transaction records/)).toBeInTheDocument();
   });
 });

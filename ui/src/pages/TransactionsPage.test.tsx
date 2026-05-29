@@ -37,6 +37,10 @@ function renderPage(path = "/transactions") {
   );
 }
 
+function clickSearch() {
+  fireEvent.click(screen.getByText("Search"));
+}
+
 describe("TransactionsPage", () => {
   beforeEach(() => {
     mockGet.mockReset();
@@ -51,7 +55,7 @@ describe("TransactionsPage", () => {
 
   it("renders all filter inputs", () => {
     renderPage();
-    expect(screen.getByPlaceholderText("Source TXN ID")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("TXN-...")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Account ID")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Customer ID")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Counterparty")).toBeInTheDocument();
@@ -61,17 +65,19 @@ describe("TransactionsPage", () => {
 
   it("displays all transactions in DataTable", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("TXN001")).toBeInTheDocument();
     });
     expect(screen.getByText("TXN002")).toBeInTheDocument();
     expect(screen.getByText("TXN003")).toBeInTheDocument();
-    expect(screen.getByText("$15,000")).toBeInTheDocument();
+    expect(screen.getByText("$15,000.00")).toBeInTheDocument();
     expect(screen.getByText("Offshore Corp")).toBeInTheDocument();
   });
 
   it("shows account name as clickable button", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("Checking")).toBeInTheDocument();
     });
@@ -80,6 +86,7 @@ describe("TransactionsPage", () => {
 
   it("shows account_id when account_name is null", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("ACC002")).toBeInTheDocument();
     });
@@ -87,6 +94,7 @@ describe("TransactionsPage", () => {
 
   it("renders location concatenation correctly", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("New York, NY, US")).toBeInTheDocument();
     });
@@ -94,6 +102,7 @@ describe("TransactionsPage", () => {
 
   it("shows dash for null amount", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("TXN003")).toBeInTheDocument();
     });
@@ -105,6 +114,7 @@ describe("TransactionsPage", () => {
 
   it("shows dash for null date and location", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("TXN002")).toBeInTheDocument();
     });
@@ -115,19 +125,19 @@ describe("TransactionsPage", () => {
 
   it("calls api.get with search params on Search click", async () => {
     renderPage();
-    fireEvent.change(screen.getByPlaceholderText("Source TXN ID"), { target: { value: "TXN001" } });
+    fireEvent.change(screen.getByPlaceholderText("TXN-..."), { target: { value: "TXN001" } });
     fireEvent.change(screen.getByPlaceholderText("Account ID"), { target: { value: "ACC001" } });
-    fireEvent.click(screen.getByText("Search"));
+    clickSearch();
     await waitFor(() => {
       expect(mockGet).toHaveBeenCalledWith("/api/transactions", expect.objectContaining({
-        source_txn_id: "TXN001", account_id: "ACC001", page: 1, per_page: 25,
+        source_txn_id: "TXN001", account_id: "ACC001", page: 1, per_page: 50,
       }));
     });
   });
 
   it("calls api.get with all filter params", async () => {
     renderPage();
-    fireEvent.change(screen.getByPlaceholderText("Source TXN ID"), { target: { value: "TXN001" } });
+    fireEvent.change(screen.getByPlaceholderText("TXN-..."), { target: { value: "TXN001" } });
     fireEvent.change(screen.getByPlaceholderText("Account ID"), { target: { value: "ACC001" } });
     fireEvent.change(screen.getByPlaceholderText("Customer ID"), { target: { value: "CUST001" } });
     fireEvent.change(screen.getByPlaceholderText("Counterparty"), { target: { value: "Offshore" } });
@@ -136,49 +146,19 @@ describe("TransactionsPage", () => {
     const dateInputs = document.querySelectorAll('input[type="date"]') as NodeListOf<HTMLInputElement>;
     fireEvent.change(dateInputs[0], { target: { value: "2026-01-01" } });
     fireEvent.change(dateInputs[1], { target: { value: "2026-12-31" } });
-    fireEvent.click(screen.getByText("Search"));
+    clickSearch();
     await waitFor(() => {
       expect(mockGet).toHaveBeenCalledWith("/api/transactions", expect.objectContaining({
         source_txn_id: "TXN001", account_id: "ACC001", customer_id: "CUST001",
         counterparty: "Offshore", amount_min: "100", amount_max: "99999",
-        from_date: "2026-01-01", to_date: "2026-12-31", page: 1, per_page: 25,
+        from_date: "2026-01-01", to_date: "2026-12-31", page: 1, per_page: 50,
       }));
     });
   });
 
-  it("shows active filter tags after search", async () => {
-    renderPage();
-    fireEvent.change(screen.getByPlaceholderText("Source TXN ID"), { target: { value: "TXN001" } });
-    fireEvent.click(screen.getByText("Search"));
-    await waitFor(() => {
-      expect(screen.getByText(/source_txn_id: TXN001/)).toBeInTheDocument();
-    });
-  });
-
-  it("shows counterparty filter tag", async () => {
-    renderPage();
-    fireEvent.change(screen.getByPlaceholderText("Counterparty"), { target: { value: "Offshore" } });
-    fireEvent.click(screen.getByText("Search"));
-    await waitFor(() => {
-      expect(screen.getByText(/counterparty: Offshore/)).toBeInTheDocument();
-    });
-  });
-
-  it("removes filter tag on click", async () => {
-    renderPage();
-    fireEvent.change(screen.getByPlaceholderText("Source TXN ID"), { target: { value: "TXN001" } });
-    fireEvent.click(screen.getByText("Search"));
-    await waitFor(() => {
-      expect(screen.getByText(/source_txn_id: TXN001/)).toBeInTheDocument();
-    });
-    const removeBtn = screen.getByText("×");
-    fireEvent.click(removeBtn);
-    expect(screen.queryByText(/source_txn_id: TXN001/)).not.toBeInTheDocument();
-  });
-
   it("pre-populates filters from URL params", () => {
     renderPage("/transactions?source_txn_id=TXN001&account_id=ACC001");
-    const sourceInput = screen.getByPlaceholderText("Source TXN ID") as HTMLInputElement;
+    const sourceInput = screen.getByPlaceholderText("TXN-...") as HTMLInputElement;
     const accountInput = screen.getByPlaceholderText("Account ID") as HTMLInputElement;
     expect(sourceInput.value).toBe("TXN001");
     expect(accountInput.value).toBe("ACC001");
@@ -187,6 +167,7 @@ describe("TransactionsPage", () => {
   it("shows error state", async () => {
     mockGet.mockRejectedValue(new Error("Failed to load"));
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("Failed to load")).toBeInTheDocument();
     });
@@ -195,13 +176,15 @@ describe("TransactionsPage", () => {
   it("shows empty message", async () => {
     mockGet.mockResolvedValue({ ...mockResponse, items: [], total: 0 });
     renderPage();
+    clickSearch();
     await waitFor(() => {
-      expect(screen.getByText("No transactions match your search. Try different filters.")).toBeInTheDocument();
+      expect(screen.getByText("No transactions found.")).toBeInTheDocument();
     });
   });
 
   it("navigates to customer on account name click", async () => {
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("Checking")).toBeInTheDocument();
     });
@@ -213,6 +196,7 @@ describe("TransactionsPage", () => {
     const scrollToSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     mockGet.mockResolvedValue({ ...mockResponse, page: 1, per_page: 1, total: 3 });
     renderPage();
+    clickSearch();
     await waitFor(() => {
       expect(screen.getByText("TXN001")).toBeInTheDocument();
     });

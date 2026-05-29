@@ -388,7 +388,7 @@ EDIT:
 
 STATUS TOGGLE:
     User clicks "Deactivate" / "Activate"
-    → window.confirm("Deactivate rule 'X'?")
+    → ConfirmDialog prompts "Deactivate rule 'X'?"
     → PATCH /api/rules/{id}/status {status: "inactive"|"active"}
     → List refreshes
     → Button text and status badge update
@@ -507,7 +507,7 @@ Available methods: `get`, `post`, `put`, `patch`, `del`, `upload` (FormData), `d
 
 - **Data loading failure** — inline error banner in DataTable with Retry button
 - **Form submission failure** — inline error message below form (e.g., RulesPage)
-- **Action failure** — `alert()` dialog (compliance review, status toggle)
+- **Action failure** — `toast.error()` (compliance review, status toggle) (see §2.8)
 - **404 on detail page** — "Customer/Transaction not found" message + "Back to list" link
 - **Compliance 404** — treated as "all SARs resolved" (completion state)
 

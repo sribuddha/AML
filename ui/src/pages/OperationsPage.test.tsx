@@ -41,6 +41,15 @@ let mockGet = vi.fn();
 let mockUpload = vi.fn();
 let mockPost = vi.fn();
 
+const mockToast = vi.hoisted(() => {
+  const t = vi.fn();
+  t.success = vi.fn();
+  t.error = vi.fn();
+  t.info = vi.fn();
+  t.warning = vi.fn();
+  return t;
+});
+
 vi.mock("../api/client", () => ({
   api: {
     get: (...args: unknown[]) => mockGet(...args),
@@ -57,6 +66,8 @@ vi.mock("../api/client", () => ({
   },
 }));
 
+vi.mock("../lib/toast", () => ({ toast: mockToast }));
+
 function renderPage() {
   return render(
     <MemoryRouter>
@@ -70,6 +81,9 @@ describe("OperationsPage", () => {
     mockGet.mockReset();
     mockUpload.mockReset();
     mockPost.mockReset();
+    mockToast.mockClear();
+    mockToast.success.mockClear();
+    mockToast.error.mockClear();
     mockGet.mockResolvedValue(mockResponse);
   });
 
@@ -83,7 +97,8 @@ describe("OperationsPage", () => {
     renderPage();
     const uploadTab = screen.getByText("Upload");
     expect(uploadTab.className).toContain("bg-white");
-    expect(screen.getByText(/drag.*drop.*csv/i)).toBeInTheDocument();
+    expect(uploadTab.className).toContain("shadow-sm");
+    expect(screen.getByText(/Drag.*drop.*CSV/i)).toBeInTheDocument();
   });
 
   it("switches to Search Uploads tab", () => {
@@ -91,6 +106,7 @@ describe("OperationsPage", () => {
     fireEvent.click(screen.getByText("Search Uploads"));
     const searchTab = screen.getByText("Search Uploads");
     expect(searchTab.className).toContain("bg-white");
+    expect(searchTab.className).toContain("shadow-sm");
     expect(screen.getByPlaceholderText("Upload ID")).toBeInTheDocument();
   });
 
@@ -154,17 +170,15 @@ describe("OperationsPage", () => {
     expect(screen.getByText(/Enter an Upload ID/)).toBeInTheDocument();
   });
 
-  it("shows alert on upload error", async () => {
+  it("calls toast.error on upload error", async () => {
     mockUpload.mockRejectedValue(new Error("Upload failed"));
-    const alertMock = vi.spyOn(window, "alert").mockImplementation(() => {});
     renderPage();
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["a"], "test.csv", { type: "text/csv" })] } });
     fireEvent.click(screen.getByRole("button", { name: /upload test.csv/i }));
-    await vi.waitFor(() => {
-      expect(alertMock).toHaveBeenCalledWith("Upload failed");
+    await waitFor(() => {
+      expect(mockToast.error).toHaveBeenCalledWith("Upload failed");
     });
-    alertMock.mockRestore();
   });
 
   it("displays uploads in DataTable after search", async () => {
@@ -193,6 +207,7 @@ describe("OperationsPage", () => {
     fireEvent.click(screen.getByText("Search Uploads"));
     const searchTab = screen.getByText("Search Uploads");
     expect(searchTab.className).toContain("bg-white");
+    expect(searchTab.className).toContain("shadow-sm");
   });
 
   it("searches with date range", async () => {
@@ -343,7 +358,7 @@ describe("OperationsPage", () => {
     expect(mockGet).toHaveBeenCalledWith("/api/uploads/search", expect.objectContaining({ page: 1 }));
   });
 
-  it("closes eval modal via × button", async () => {
+  it("closes eval modal via \u00D7 button", async () => {
     mockPost.mockResolvedValue(mockEvalReport);
     renderPage();
     fireEvent.click(screen.getByText("Search Uploads"));
@@ -353,7 +368,8 @@ describe("OperationsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Eval Report")).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByText("\u00D7"));
+    const closeBtn = screen.getByText("\u00D7");
+    fireEvent.click(closeBtn);
     await waitFor(() => {
       expect(screen.queryByText("Eval Report")).not.toBeInTheDocument();
     });
@@ -365,7 +381,8 @@ describe("OperationsPage", () => {
     fireEvent.click(screen.getByText("Upload"));
     const uploadTab = screen.getByText("Upload");
     expect(uploadTab.className).toContain("bg-white");
-    expect(screen.getByText(/drag.*drop.*csv/i)).toBeInTheDocument();
+    expect(uploadTab.className).toContain("shadow-sm");
+    expect(screen.getByText(/Drag.*drop.*CSV/i)).toBeInTheDocument();
   });
 
   it("clicks View Uploads link after upload", async () => {

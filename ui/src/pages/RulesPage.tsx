@@ -1,221 +1,248 @@
-import { useState, useEffect, useCallback } from "react";
-import { api } from "../api/client";
-import DataTable from "../components/DataTable";
-import type { RuleResponse, RuleCreate, PaginatedResponse } from "../types";
-
-type RuleAction = "create" | "edit" | null;
+import { useState, useEffect } from "react"
+import { api } from "../api/client"
+import { toast } from "../lib/toast"
+import DataTable from "../components/DataTable"
+import PageShell from "../components/PageShell"
+import SearchForm from "../components/SearchForm"
+import ConfirmDialog from "../components/ConfirmDialog"
+import type { RuleResponse, RuleCreate, PaginatedResponse } from "../types"
 
 const EMPTY_RULE: RuleCreate = {
-  name: "",
-  description: "",
-  type: "deterministic",
-  status: "active",
-  rules_json: [],
-};
+  name: "", description: "", type: "deterministic", status: "active", rules_json: [],
+}
+
+type RuleAction = "create" | "edit" | null
 
 export default function RulesPage() {
-  const [rules, setRules] = useState<PaginatedResponse<RuleResponse> | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
+  const [rules, setRules] = useState<RuleResponse[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [filters, setFilters] = useState<Record<string, string>>({
+    nameFilter: "", typeFilter: "", statusFilter: "",
+  })
+  const [formData, setFormData] = useState<RuleCreate>(EMPTY_RULE)
+  const [action, setAction] = useState<RuleAction>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
 
-  const [typeFilter, setTypeFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [nameFilter, setNameFilter] = useState("");
+  const [confirmAction, setConfirmAction] = useState<{ ruleId: string; name: string; newStatus: string } | null>(null)
 
-  const [action, setAction] = useState<RuleAction>(null);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState<RuleCreate>(EMPTY_RULE);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const fetchRules = useCallback(async (p: number) => {
-    setLoading(true);
-    setError(null);
+  const fetchRules = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const result = await api.get<PaginatedResponse<RuleResponse>>("/api/rules", {
-        type: typeFilter || undefined,
-        status: statusFilter.toLowerCase() === "all" ? "all" : (statusFilter || undefined),
-        name: nameFilter || undefined,
-        page: p, per_page: 25,
-      });
-      setRules(result);
+      const result = await api.get<PaginatedResponse<RuleResponse>>("/api/rules", { per_page: 100 })
+      setRules(result.items)
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load");
+      setError(e instanceof Error ? e.message : "Failed to load")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, [typeFilter, statusFilter, nameFilter]);
+  }
 
-  useEffect(() => { fetchRules(page); }, [page, fetchRules]);
+  useEffect(() => { fetchRules() }, [])
 
-  const handleSearch = () => { setPage(1); fetchRules(1); };
+  const filtered = rules.filter((r) => {
+    if (filters.nameFilter && !r.name.toLowerCase().includes(filters.nameFilter.toLowerCase())) return false
+    if (filters.typeFilter && filters.typeFilter !== "all" && r.type !== filters.typeFilter) return false
+    if (filters.statusFilter && filters.statusFilter !== "all" && r.status !== filters.statusFilter) return false
+    return true
+  })
 
-  const openCreate = () => {
-    setEditId(null);
-    setForm({ ...EMPTY_RULE });
-    setFormError(null);
-    setAction("create");
-  };
+  const handleFilterChange = (key: string, value: string) => {
+    setFilters((prev) => ({ ...prev, [key]: value }))
+  }
 
-  const openEdit = (rule: RuleResponse) => {
-    setEditId(rule.id);
-    setForm({ name: rule.name, description: rule.description, type: rule.type, status: rule.status, rules_json: rule.rules_json });
-    setFormError(null);
-    setAction("edit");
-  };
+  const startCreate = () => {
+    setFormData(EMPTY_RULE)
+    setEditingId(null)
+    setFormError(null)
+    setAction("create")
+  }
 
-  const closeForm = () => {
-    setAction(null);
-    setEditId(null);
-    setFormError(null);
-  };
+  const startEdit = (rule: RuleResponse) => {
+    setFormData({
+      name: rule.name,
+      description: rule.description || "",
+      type: rule.type,
+      status: rule.status,
+      rules_json: rule.rules_json,
+    })
+    setEditingId(rule.id)
+    setFormError(null)
+    setAction("edit")
+  }
+
+  const cancelForm = () => {
+    setAction(null)
+    setEditingId(null)
+    setFormError(null)
+  }
 
   const handleSave = async () => {
-    if (!form.name.trim()) {
-      setFormError("Name is required");
-      return;
+    if (!formData.name.trim()) {
+      setFormError("Name is required")
+      return
     }
-    setSaving(true);
-    setFormError(null);
+    setFormError(null)
     try {
       if (action === "create") {
-        await api.post<RuleResponse>("/api/rules", form);
-      } else if (editId) {
-        await api.put<RuleResponse>(`/api/rules/${editId}`, form);
+        await api.post("/api/rules", formData)
+        toast.success("Rule created")
+      } else if (editingId) {
+        await api.patch(`/api/rules/${editingId}`, formData)
+        toast.success("Rule updated")
       }
-      closeForm();
-      await fetchRules(page);
+      cancelForm()
+      await fetchRules()
     } catch (e: unknown) {
-      setFormError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
+      setFormError(e instanceof Error ? e.message : "Save failed")
     }
-  };
+  }
 
-  const handleToggleStatus = async (rule: RuleResponse) => {
-    const newStatus = rule.status === "active" ? "inactive" : "active";
-    const label = newStatus === "inactive" ? "deactivate" : "reactivate";
-    if (!window.confirm(`${label.charAt(0).toUpperCase() + label.slice(1)} rule "${rule.name}"?`)) return;
+  const handleToggleStatus = async () => {
+    if (!confirmAction) return
     try {
-      await api.patch<RuleResponse>(`/api/rules/${rule.id}/status`, { status: newStatus });
-      await fetchRules(page);
+      await api.patch(`/api/rules/${confirmAction.ruleId}/status`, { status: confirmAction.newStatus })
+      toast.success(`Rule ${confirmAction.newStatus === "active" ? "activated" : "deactivated"}`)
+      setConfirmAction(null)
+      await fetchRules()
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Failed to update status");
+      toast.error(e instanceof Error ? e.message : "Failed to update status")
+      setConfirmAction(null)
     }
-  };
+  }
 
-  const columns = [
-    { key: "name", label: "Name", render: (row: RuleResponse) =>
-        <button onClick={() => openEdit(row)} className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-sm">
-          {row.name}
-        </button>,
+  const searchFields = [
+    { key: "nameFilter", label: "Name", placeholder: "Filter by name..." },
+    {
+      key: "typeFilter", label: "Type", type: "select" as const,
+      options: [
+        { label: "All Types", value: "all" },
+        { label: "Deterministic", value: "deterministic" },
+      ],
     },
-    { key: "type", label: "Type", render: (row: RuleResponse) => <span className="text-xs font-mono text-slate-500">{row.type}</span> },
-    { key: "status", label: "Status", render: (row: RuleResponse) => {
-        const colors: Record<string, string> = { active: "bg-green-100 text-green-700", inactive: "bg-slate-100 text-slate-500" };
-        return <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded-full ${colors[row.status] || "bg-slate-100 text-slate-600"}`}>{row.status}</span>;
-      },
+    {
+      key: "statusFilter", label: "Status", type: "select" as const,
+      options: [
+        { label: "All Statuses", value: "all" },
+        { label: "Active", value: "active" },
+        { label: "Inactive", value: "inactive" },
+      ],
     },
-    { key: "description", label: "Description", render: (row: RuleResponse) => row.description || "-", className: "text-slate-500" },
-    { key: "actions", label: "", sortable: false, render: (row: RuleResponse) =>
-        <button onClick={() => handleToggleStatus(row)}
-          className={`text-xs font-medium hover:underline ${row.status === "active" ? "text-amber-600 hover:text-amber-800" : "text-green-600 hover:text-green-800"}`}>
-          {row.status === "active" ? "Deactivate" : "Activate"}
-        </button>,
-      className: "text-right",
-    },
-  ];
+  ]
 
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold text-slate-800">Rules</h3>
-        <p className="text-sm text-slate-500 mt-0.5">Manage AML detection rules</p>
-      </div>
-
-      {/* Filters + Add */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-3">
-        <div className="flex gap-3 items-end flex-wrap">
-          <div>
-            <label className="text-xs text-slate-500 mb-0.5 block">Type</label>
-            <input placeholder="Filter by type" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 mb-0.5 block">Status</label>
-            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-              <option value="">All</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 mb-0.5 block">Name</label>
-            <input placeholder="Filter by name" value={nameFilter} onChange={e => setNameFilter(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <button onClick={handleSearch}
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-            Search
+  const ruleColumns = [
+    { key: "name", label: "Name", sortable: true },
+    { key: "type", label: "Type", sortable: true },
+    { key: "status", label: "Status", sortable: true },
+    {
+      key: "rules_json", label: "Conditions", sortable: false,
+      render: (row: RuleResponse) => (
+        <span className="font-mono text-xs text-slate-500">
+          {Array.isArray(row.rules_json) ? row.rules_json.length : 0} conditions
+        </span>
+      ),
+    },
+    {
+      key: "actions", label: "Actions", sortable: false,
+      render: (row: RuleResponse) => (
+        <div className="flex gap-1">
+          <button onClick={() => startEdit(row)}
+            className="px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors">
+            Edit
           </button>
-          <button onClick={openCreate}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors ml-auto">
-            + Add Rule
+          <button onClick={() => setConfirmAction({
+            ruleId: row.id, name: row.name,
+            newStatus: row.status === "active" ? "inactive" : "active",
+          })}
+            className="px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors">
+            {row.status === "active" ? "Deactivate" : "Activate"}
           </button>
         </div>
-      </div>
+      ),
+    },
+  ]
+
+  return (
+    <PageShell
+      title="Rules"
+      description="Manage AML detection rules"
+      actions={
+        action === null && (
+          <button onClick={startCreate}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+            + New Rule
+          </button>
+        )
+      }
+    >
+      <SearchForm
+        fields={searchFields}
+        values={filters}
+        onChange={handleFilterChange}
+        onSearch={() => {}}
+      />
 
       {/* Create/Edit form */}
       {action && (
-        <div className="bg-white border border-blue-200 rounded-lg p-5 space-y-3">
-          <h4 className="text-sm font-semibold text-slate-700">{action === "create" ? "Add Rule" : "Edit Rule"}</h4>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-slate-500 mb-0.5 block">Name</label>
-              <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <div className="bg-white border border-slate-200 rounded-lg p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider">
+            {action === "create" ? "New Rule" : "Edit Rule"}
+          </h3>
+          {formError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{formError}</div>
+          )}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Name</label>
+              <input value={formData.name}
+                onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
-            <div>
-              <label className="text-xs text-slate-500 mb-0.5 block">Type</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                <option value="deterministic">deterministic</option>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
+              <select value={formData.type}
+                onChange={(e) => setFormData((p) => ({ ...p, type: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="deterministic">Deterministic</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs text-slate-500 mb-0.5 block">Status</label>
-              <select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white">
-                <option value="active">active</option>
-                <option value="inactive">inactive</option>
+            <div className="col-span-2 sm:col-span-1">
+              <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
+              <select value={formData.status}
+                onChange={(e) => setFormData((p) => ({ ...p, status: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
               </select>
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-slate-500 mb-0.5 block">Description</label>
-              <input value={form.description || ""} onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="block text-xs font-medium text-slate-500 mb-1">Description</label>
+              <input value={formData.description || ""}
+                onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-slate-500 mb-0.5 block">Rules JSON</label>
-              <textarea value={JSON.stringify(form.rules_json, null, 2)}
-                onChange={e => { try { const parsed = JSON.parse(e.target.value); setForm(f => ({ ...f, rules_json: parsed })); } catch {} }}
+              <label className="block text-xs font-medium text-slate-500 mb-1">Rules JSON</label>
+              <textarea value={JSON.stringify(formData.rules_json, null, 2)}
+                onChange={(e) => {
+                  try {
+                    const parsed = JSON.parse(e.target.value);
+                    setFormData((p) => ({ ...p, rules_json: parsed }));
+                  } catch { /* ignore invalid JSON */ }
+                }}
                 rows={6}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              <p className="text-xs text-slate-400 mt-1">JSON array of rule conditions/actions</p>
+                className="w-full px-3 py-2 font-mono text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
             </div>
           </div>
-
-          {formError && <p className="text-sm text-red-600">{formError}</p>}
-
-          <div className="flex gap-2">
-            <button onClick={handleSave} disabled={saving}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-60 transition-colors">
-              {saving ? "Saving..." : "Save"}
+          <div className="flex gap-2 pt-2">
+            <button onClick={handleSave}
+              className="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors">
+              Save
             </button>
-            <button onClick={closeForm}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors">
+            <button onClick={cancelForm}
+              className="px-4 py-2 text-sm font-medium rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition-colors">
               Cancel
             </button>
           </div>
@@ -223,17 +250,23 @@ export default function RulesPage() {
       )}
 
       <DataTable
-        columns={columns}
-        data={rules?.items || []}
+        columns={ruleColumns}
+        data={filtered}
         loading={loading}
         error={error}
-        onRetry={() => fetchRules(page)}
+        onRetry={fetchRules}
         emptyMessage="No rules found."
-        page={rules?.page}
-        perPage={rules?.per_page}
-        total={rules?.total}
-        onPageChange={(p) => setPage(p)}
       />
-    </div>
-  );
+
+      <ConfirmDialog
+        open={confirmAction !== null}
+        title={confirmAction?.newStatus === "active" ? "Activate Rule" : "Deactivate Rule"}
+        message={`Are you sure you want to ${confirmAction?.newStatus === "active" ? "activate" : "deactivate"} "${confirmAction?.name}"?`}
+        confirmLabel={confirmAction?.newStatus === "active" ? "Activate" : "Deactivate"}
+        variant="danger"
+        onConfirm={handleToggleStatus}
+        onCancel={() => setConfirmAction(null)}
+      />
+    </PageShell>
+  )
 }
