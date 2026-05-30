@@ -1,9 +1,9 @@
 import logging
-from datetime import datetime, UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 logger = logging.getLogger("aml_workflow")
+from src.core.utils import now as _now
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 from sqlalchemy import func, select
@@ -50,7 +50,7 @@ async def batch_review_sars(body: BatchReviewRequest, db: AsyncSession = Depends
     if not sars:
         raise HTTPException(status_code=404, detail="No pending SARs found for the given IDs")
 
-    now = datetime.now(UTC).isoformat()
+    now = _now()
     txn_status = "clean" if body.action == "confirmed" else "dismissed"
 
     uploads_affected: set[str] = set()
@@ -100,7 +100,7 @@ async def review_sar(sar_id: str, body: ReviewRequest, db: AsyncSession = Depend
     if sar.status != "pending_review":
         raise HTTPException(status_code=400, detail=f"SAR already {sar.status}")
 
-    now = datetime.now(UTC).isoformat()
+    now = _now()
     previous_status = sar.status
     sar.status = body.action
     sar.reviewed_at = now

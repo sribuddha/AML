@@ -1,11 +1,13 @@
 import uuid
 from datetime import datetime, UTC
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from src.aml_workflow.services import (
     _set_upload_status,
     record_transaction_status,
+    trigger_workflow,
 )
 from src.core.models.uploaded_files import UploadedFiles
 from src.aml_workflow.models.transaction_status import TransactionStatus
@@ -43,3 +45,59 @@ class TestRecordTransactionStatus:
         )).scalars().all()
         assert len(rows) == 1
         assert rows[0].status == "clean"
+
+
+class TestTriggerWorkflow:
+    async def test_calls_run_validation(self):
+        import sys
+        mock_triggers = type(sys)("src.aml_workflow.triggers")
+        mock_triggers.run_validation = AsyncMock()
+        sys.modules["src.aml_workflow.triggers"] = mock_triggers
+
+        mock_session = AsyncMock()
+        with patch("src.bff.database.async_session_factory") as mock_factory:
+            mock_factory.return_value.__aenter__.return_value = mock_session
+            await trigger_workflow("test-upload-id")
+
+        mock_triggers.run_validation.assert_awaited_once_with("test-upload-id", mock_session)
+
+    async def test_logs_error_on_failure(self):
+        import sys
+        mock_triggers = type(sys)("src.aml_workflow.triggers")
+        mock_triggers.run_validation = AsyncMock()
+        sys.modules["src.aml_workflow.triggers"] = mock_triggers
+
+        with (
+            patch("src.bff.database.async_session_factory") as mock_factory,
+            patch("src.aml_workflow.services.logger.exception") as mock_log,
+        ):
+            mock_factory.return_value.__aenter__.side_effect = RuntimeError("DB down")
+            await trigger_workflow("test-upload-id")
+
+        mock_log.assert_called_once()
+        args, _ = mock_log.call_args
+        assert "Background workflow failed" in args[0]
+        assert args[1] == "test-upload-id"
+
+    async def test_does_not_re_raise(self):
+        import sys
+        mock_triggers = type(sys)("src.aml_workflow.triggers")
+        mock_triggers.run_validation = AsyncMock()
+        sys.modules["src.aml_workflow.triggers"] = mock_triggers
+
+        with patch("src.bff.database.async_session_factory") as mock_factory:
+            mock_factory.return_value.__aenter__.side_effect = RuntimeError("DB down")
+            await trigger_workflow("test-upload-id")
+
+    async def test_passes_upload_id_correctly(self):
+        import sys
+        mock_triggers = type(sys)("src.aml_workflow.triggers")
+        mock_triggers.run_validation = AsyncMock()
+        sys.modules["src.aml_workflow.triggers"] = mock_triggers
+
+        mock_session = AsyncMock()
+        with patch("src.bff.database.async_session_factory") as mock_factory:
+            mock_factory.return_value.__aenter__.return_value = mock_session
+            await trigger_workflow("upload-42")
+
+        mock_triggers.run_validation.assert_awaited_once_with("upload-42", mock_session)

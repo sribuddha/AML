@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import statistics
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, UTC
@@ -9,6 +8,8 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.models.enrichment_snapshot import EnrichmentSnapshot
+from src.core.utils import now as _now
+from src.core.metrics import compute_velocity_zscore
 from src.core.models.account import Account
 from src.core.models.transaction import Transaction
 
@@ -196,25 +197,7 @@ async def enrich_transactions(
 
         # Velocity z-score
         all_dates = dates_by_customer.get(cid, [])
-        weekly_counts = [0, 0, 0, 0]
-        this_week_count = 0
-        for d in all_dates:
-            dt = _parse_date(d)
-            if dt is None:
-                continue
-            days_ago = (ref_date - dt).days
-            if 0 <= days_ago <= 7:
-                this_week_count += 1
-            else:
-                weeks_ago = days_ago // 7
-                if 1 <= weeks_ago <= 4:
-                    weekly_counts[weeks_ago - 1] += 1
-
-        avg_weekly = sum(weekly_counts) / max(len(weekly_counts), 1)
-        if avg_weekly > 0 and this_week_count > 0:
-            variance = sum((c - avg_weekly) ** 2 for c in weekly_counts) / max(len(weekly_counts), 1)
-            std_weekly = math.sqrt(variance) if variance > 0 else 1.0
-            context.velocity_zscore = (this_week_count - avg_weekly) / max(std_weekly, 1.0)
+        context.velocity_zscore = compute_velocity_zscore(all_dates, ref_date)
 
         results[cid] = {
             "customer_txn_count_30d": context.customer_txn_count_30d,
@@ -230,7 +213,7 @@ async def enrich_transactions(
 
     # Write enrichment snapshots for eval audit trail
     if results:
-        now = datetime.now(UTC).isoformat()
+        now = _now()
         snapshots = [
             EnrichmentSnapshot(
                 upload_id=upload_id,

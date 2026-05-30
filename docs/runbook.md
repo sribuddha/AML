@@ -184,6 +184,12 @@ Server runs on `http://127.0.0.1:8000`. Auto-runs pending Alembic migrations on 
 
 ## Run Tests
 
+Activate the venv first (otherwise system Python is used and local packages like `aml-observability` won't be found):
+
+```bash
+.venv\Scripts\activate
+```
+
 ```bash
 # All tests with coverage (terminal output only — no files created)
 python -m pytest tests/ --cov --cov-report=term-missing
@@ -208,6 +214,9 @@ python -m pytest tests/unit/file/test_service.py::test_all_valid_rows_accepted -
 
 # Run a specific domain (e.g., aml, bff, file)
 python -m pytest tests/unit/aml/ tests/e2e/aml/ -v
+
+# If venv not activated, call venv pytest directly:
+.venv\Scripts\pytest tests/unit/ -v
 
 # Playwright UI E2E tests (requires seeded DB + both servers running)
 # Alternatively, Playwright config auto-starts servers via webServer

@@ -2,8 +2,9 @@ import contextlib
 import json
 import math
 import uuid as _uuid
-from datetime import datetime, UTC
 from pathlib import Path
+
+from src.core.utils import now as _now
 
 import pandas as pd
 from sqlalchemy import select
@@ -159,7 +160,7 @@ async def process_upload(
     db: AsyncSession,
     content: bytes | None = None,
 ):
-    now = datetime.now(UTC).isoformat()
+    now = _now()
     total_rows = len(df)
     chunk_size = get_chunk_size()
 
@@ -396,7 +397,7 @@ async def retry_upload(upload_id: str, db: AsyncSession):
     if not val_files:
         raise ValueError("No .val files found")
 
-    now = datetime.now(UTC).isoformat()
+    now = _now()
     total_accepted = 0
     total_failed = 0
 

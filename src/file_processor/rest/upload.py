@@ -12,6 +12,7 @@ from src.bff.config import BASE_DIR
 from src.bff.database import get_db
 from src.file_processor.service import REQUIRED_FIELDS, HEADER_ALIASES, process_upload, retry_upload
 from src.bff.logger import logger
+from src.aml_workflow.services import trigger_workflow
 
 WORK_DIR = BASE_DIR / "work"
 router = APIRouter()
@@ -60,16 +61,7 @@ async def upload_file(
 
     result = await process_upload(df, file.filename, upload_id, db, content)
 
-    async def _trigger_workflow():
-        try:
-            from src.bff.database import async_session_factory
-            async with async_session_factory() as workflow_db:
-                from src.aml_workflow.triggers import run_validation
-                await run_validation(upload_id, workflow_db)
-        except Exception:
-            logger.exception("Background workflow failed for upload %s", upload_id)
-
-    task = asyncio.create_task(_trigger_workflow())
+    task = asyncio.create_task(trigger_workflow(upload_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
@@ -152,16 +144,7 @@ async def upload_from_work(
         await db.execute(stmt)
         await db.commit()
 
-    async def _trigger_workflow():
-        try:
-            from src.bff.database import async_session_factory
-            async with async_session_factory() as workflow_db:
-                from src.aml_workflow.triggers import run_validation
-                await run_validation(upload_id, workflow_db)
-        except Exception:
-            logger.exception("Background workflow failed for upload %s", upload_id)
-
-    task = asyncio.create_task(_trigger_workflow())
+    task = asyncio.create_task(trigger_workflow(upload_id))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 

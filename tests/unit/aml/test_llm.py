@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from google.genai.errors import APIError
 
 from src.aml_workflow.llm import (
     LLMClient,
@@ -261,7 +262,7 @@ class TestGeminiFallback:
         from src.aml_workflow.providers import GeminiProvider
         model = "gemini-2.0-flash"
         mock_client = MagicMock()
-        mock_client.aio.models.generate_content = AsyncMock(side_effect=Exception("API error"))
+        mock_client.aio.models.generate_content = AsyncMock(side_effect=APIError(code=500, response_json={"error": "API error"}))
         return GeminiProvider(model_triage=model, model_sar=model, gemini_client=mock_client)
 
     async def test_triage_fallback_on_error(self, provider):

@@ -19,6 +19,7 @@ from src.aml_workflow.state import WorkflowState
 from src.aml_workflow.validator import evaluate_rules
 from src.bff.config import get_velocity_zscore_threshold, get_structuring_24h_threshold
 from src.bff.logger import logger
+from src.core.utils import now as _now
 
 MAX_RETRIES = 3
 
@@ -36,10 +37,6 @@ def _is_transient(e: Exception) -> bool:
     if isinstance(e, (TimeoutError, ConnectionError)):
         return True
     return any(cls.__name__ in _LIBRARY_TRANSIENT_NAMES for cls in type(e).__mro__)
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
 
 
 async def run_node(state: WorkflowState, db: AsyncSession, step_name: str, fn: Callable) -> dict:

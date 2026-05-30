@@ -3,6 +3,7 @@ import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from google.genai.errors import APIError
 
 from src.aml_workflow.llm import (
     LLMClient,
@@ -181,7 +182,7 @@ class TestGeminiTriage:
 
     async def test_triage_gemini_fallback_on_error(self):
         p = _make_gemini_provider()
-        p._gemini.aio.models.generate_content = AsyncMock(side_effect=Exception("API error"))
+        p._gemini.aio.models.generate_content = AsyncMock(side_effect=APIError(code=500, response_json={"error": "API error"}))
 
         result = await p.triage(_TXN, _FLAG)
         assert isinstance(result, TriageDecision)
@@ -205,7 +206,7 @@ class TestGeminiTriageStage3:
 
     async def test_stage3_gemini_fallback_on_error(self):
         p = _make_gemini_provider()
-        p._gemini.aio.models.generate_content = AsyncMock(side_effect=Exception("API error"))
+        p._gemini.aio.models.generate_content = AsyncMock(side_effect=APIError(code=500, response_json={"error": "API error"}))
 
         result = await p.triage_stage3(_TXN, _FLAG, [])
         assert isinstance(result, TriageDecision)
@@ -227,7 +228,7 @@ class TestGeminiSar:
 
     async def test_sar_gemini_fallback_on_error(self):
         p = _make_gemini_provider()
-        p._gemini.aio.models.generate_content = AsyncMock(side_effect=Exception("API error"))
+        p._gemini.aio.models.generate_content = AsyncMock(side_effect=APIError(code=500, response_json={"error": "API error"}))
 
         triage = TriageDecision(escalate=True, reason="High risk", confidence=0.9)
         result = await p.generate_sar(_TXN, _FLAG, triage)
@@ -403,6 +404,165 @@ class TestFallbackBatch:
         result = _sar_fallback_batch([_TXN], [_FLAG], [triage])
         assert len(result) == 1
         assert "TXN001" in result[0].content
+
+
+# ── OpenAI batch failure handlers ──────────────────────────────────
+
+
+class TestOpenAIBatchErrors:
+    _BATCH_RESP = json.dumps({"decisions": [{"source_txn_id": "TXN001", "escalate": True, "reason": "High", "confidence": 0.9}]})
+
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_triage_batch_fallback_on_error(self):
+        p = _make_openai_provider()
+        p._openai.chat.completions.create = AsyncMock(side_effect=_MOCKED_API_ERROR("API error"))
+
+        result = await p.triage_batch([_TXN], [_FLAG], None, [None])
+        assert len(result) == 1
+        assert result[0].escalate is True
+
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_triage_stage3_batch_success(self):
+        p = _make_openai_provider()
+        mock_msg = MagicMock()
+        mock_msg.content = self._BATCH_RESP
+        mock_choice = MagicMock()
+        mock_choice.message = mock_msg
+        mock_resp = MagicMock()
+        mock_resp.choices = [mock_choice]
+        p._openai.chat.completions.create = AsyncMock(return_value=mock_resp)
+
+        result = await p.triage_stage3_batch([_TXN], [_FLAG], [[]], None)
+        assert len(result) == 1
+        assert result[0].escalate is True
+
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_triage_stage3_batch_fallback_on_error(self):
+        p = _make_openai_provider()
+        p._openai.chat.completions.create = AsyncMock(side_effect=_MOCKED_API_ERROR("API error"))
+
+        result = await p.triage_stage3_batch([_TXN], [_FLAG], [[]], None)
+        assert len(result) == 1
+        assert result[0].escalate is True
+
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_sar_batch_success(self):
+        p = _make_openai_provider()
+        sar_resp = json.dumps({"sars": [{"source_txn_id": "TXN001", "content": "SAR text"}]})
+        mock_msg = MagicMock()
+        mock_msg.content = sar_resp
+        mock_choice = MagicMock()
+        mock_choice.message = mock_msg
+        mock_resp = MagicMock()
+        mock_resp.choices = [mock_choice]
+        p._openai.chat.completions.create = AsyncMock(return_value=mock_resp)
+
+        triage = TriageDecision(escalate=True, reason="High", confidence=0.9)
+        result = await p.generate_sar_batch([_TXN], [_FLAG], [triage])
+        assert len(result) == 1
+        assert "SAR text" in result[0].content
+
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_sar_batch_fallback_on_error(self):
+        p = _make_openai_provider()
+        p._openai.chat.completions.create = AsyncMock(side_effect=_MOCKED_API_ERROR("API error"))
+
+        triage = TriageDecision(escalate=True, reason="High", confidence=0.9)
+        result = await p.generate_sar_batch([_TXN], [_FLAG], [triage])
+        assert len(result) == 1
+        assert "TXN001" in result[0].content
+
+
+# ── Gemini batch methods ──────────────────────────────────────────
+
+
+class TestGeminiBatch:
+    _BATCH_RESP = '{"decisions": [{"source_txn_id": "TXN001", "escalate": true, "reason": "High", "confidence": 0.9}]}'
+    _SAR_BATCH_RESP = '{"sars": [{"source_txn_id": "TXN001", "content": "Gemini SAR"}]}'
+
+    async def test_triage_batch_success(self):
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = self._BATCH_RESP
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+
+        result = await p.triage_batch([_TXN], [_FLAG], None, [None])
+        assert len(result) == 1
+        assert result[0].escalate is True
+
+    async def test_triage_batch_fallback_on_error(self):
+        from google.genai.errors import APIError
+        p = _make_gemini_provider()
+        p._gemini.aio.models.generate_content = AsyncMock(side_effect=APIError(code=500, response_json={}))
+
+        result = await p.triage_batch([_TXN], [_FLAG], None, [None])
+        assert len(result) == 1
+        assert result[0].escalate is True
+
+    async def test_triage_stage3_batch_success(self):
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = self._BATCH_RESP
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+
+        result = await p.triage_stage3_batch([_TXN], [_FLAG], [[]], None)
+        assert len(result) == 1
+        assert result[0].escalate is True
+
+    async def test_triage_stage3_batch_fallback_on_error(self):
+        from google.genai.errors import APIError
+        p = _make_gemini_provider()
+        p._gemini.aio.models.generate_content = AsyncMock(side_effect=APIError(code=500, response_json={}))
+
+        result = await p.triage_stage3_batch([_TXN], [_FLAG], [[]], None)
+        assert len(result) == 1
+        assert result[0].escalate is True
+
+    async def test_sar_batch_success(self):
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = self._SAR_BATCH_RESP
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+
+        triage = TriageDecision(escalate=True, reason="High", confidence=0.9)
+        result = await p.generate_sar_batch([_TXN], [_FLAG], [triage])
+        assert len(result) == 1
+        assert "Gemini SAR" in result[0].content
+
+    async def test_sar_batch_fallback_on_error(self):
+        from google.genai.errors import APIError
+        p = _make_gemini_provider()
+        p._gemini.aio.models.generate_content = AsyncMock(side_effect=APIError(code=500, response_json={}))
+
+        triage = TriageDecision(escalate=True, reason="High", confidence=0.9)
+        result = await p.generate_sar_batch([_TXN], [_FLAG], [triage])
+        assert len(result) == 1
+        assert "TXN001" in result[0].content
+
+
+# ── Gemini parsing fallbacks ──────────────────────────────────────
+
+
+class TestGeminiParsingFallback:
+    async def test_triage_bad_json_fallback(self):
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = "not valid json"
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+
+        result = await p.triage(_TXN, _FLAG)
+        assert isinstance(result, TriageDecision)
+        assert result.escalate is True
+
+    async def test_triage_stage3_bad_json_fallback(self):
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = "not valid json"
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+
+        result = await p.triage_stage3(_TXN, _FLAG, [])
+        assert isinstance(result, TriageDecision)
+        assert result.escalate is True
 
 
 class TestInitClient:

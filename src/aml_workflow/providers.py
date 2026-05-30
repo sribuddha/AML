@@ -6,6 +6,9 @@ from typing import Any
 
 from src.bff.logger import logger
 
+from google.genai import types
+from google.genai.errors import APIError
+
 from src.aml_workflow.llm import (
     TriageDecision,
     SarResult,
@@ -352,7 +355,6 @@ class GeminiProvider(LLMProvider):
         system, user = _build_triage_messages(transaction, flag_details, rules, enriched_context)
         logger.info("Gemini triage: model=%s, txn=%s", self._triage_model, transaction.get("source_txn_id", "N/A"))
         try:
-            from google.genai import types
             resp = await self._gemini.aio.models.generate_content(
                 model=self._triage_model,
                 contents=user,
@@ -370,7 +372,7 @@ class GeminiProvider(LLMProvider):
                     ),
                 ),
             )
-        except Exception as e:
+        except APIError as e:
             logger.error("Gemini triage API call failed: %s", e)
             return _triage_fallback(transaction, flag_details, rules)
         try:
@@ -390,7 +392,6 @@ class GeminiProvider(LLMProvider):
         system, user = _build_triage_stage3_messages(transaction, flag_details, recent_txns, rules)
         logger.info("Gemini stage3: model=%s, txn=%s", self._triage_model, transaction.get("source_txn_id", "N/A"))
         try:
-            from google.genai import types
             resp = await self._gemini.aio.models.generate_content(
                 model=self._triage_model,
                 contents=user,
@@ -408,7 +409,7 @@ class GeminiProvider(LLMProvider):
                     ),
                 ),
             )
-        except Exception as e:
+        except APIError as e:
             logger.error("Gemini stage3 API call failed: %s", e)
             return _triage_fallback(transaction, flag_details, rules)
         try:
@@ -431,7 +432,7 @@ class GeminiProvider(LLMProvider):
                 model=self._sar_model,
                 contents=prompt,
             )
-        except Exception as e:
+        except APIError as e:
             logger.error("Gemini SAR API call failed: %s", e)
             return _sar_fallback(transaction, flag_details, triage)
         content = resp.text or ""
@@ -447,7 +448,6 @@ class GeminiProvider(LLMProvider):
         system, user = _build_triage_batch_messages(transactions, flag_details_list, rules, enriched_context_list)
         logger.info("Gemini triage batch: model=%s, n=%d", self._triage_model, len(transactions))
         try:
-            from google.genai import types
             resp = await self._gemini.aio.models.generate_content(
                 model=self._triage_model,
                 contents=user,
@@ -476,7 +476,7 @@ class GeminiProvider(LLMProvider):
                 ),
             )
             return _parse_triage_batch_response(resp.text, transactions)
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+        except (APIError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.error("Gemini triage batch failed: %s", e)
             return _triage_fallback_batch(transactions, flag_details_list, rules, enriched_context_list)
 
@@ -490,7 +490,6 @@ class GeminiProvider(LLMProvider):
         system, user = _build_triage_stage3_batch_messages(transactions, flag_details_list, recent_txns_list, rules)
         logger.info("Gemini stage3 batch: model=%s, n=%d", self._triage_model, len(transactions))
         try:
-            from google.genai import types
             resp = await self._gemini.aio.models.generate_content(
                 model=self._triage_model,
                 contents=user,
@@ -519,7 +518,7 @@ class GeminiProvider(LLMProvider):
                 ),
             )
             return _parse_triage_batch_response(resp.text, transactions)
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+        except (APIError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.error("Gemini stage3 triage batch failed: %s", e)
             return _triage_fallback_batch(transactions, flag_details_list, rules)
 
@@ -532,7 +531,6 @@ class GeminiProvider(LLMProvider):
         prompt = _build_sar_batch_prompt(transactions, flag_details_list, triage_list)
         logger.info("Gemini SAR batch: model=%s, n=%d", self._sar_model, len(transactions))
         try:
-            from google.genai import types
             resp = await self._gemini.aio.models.generate_content(
                 model=self._sar_model,
                 contents=prompt,
@@ -558,7 +556,7 @@ class GeminiProvider(LLMProvider):
                 ),
             )
             return _parse_sar_batch_response(resp.text, transactions, flag_details_list, triage_list)
-        except (json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
+        except (APIError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.error("Gemini SAR batch failed: %s", e)
             return _sar_fallback_batch(transactions, flag_details_list, triage_list)
 

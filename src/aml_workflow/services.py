@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, UTC
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bff.logger import logger
-
-
-def _now() -> str:
-    return datetime.now(UTC).isoformat()
+from src.core.utils import now
 
 
 async def _set_upload_status(db: AsyncSession, upload_id: str, status: str) -> None:
@@ -19,7 +14,7 @@ async def _set_upload_status(db: AsyncSession, upload_id: str, status: str) -> N
     upload = await db.get(UploadedFiles, upload_id)
     if upload:
         upload.status = status
-        upload.updated_at = _now()
+        upload.updated_at = now()
     else:
         logger.warning("Upload %s not found — status log only", upload_id)
 
@@ -27,7 +22,7 @@ async def _set_upload_status(db: AsyncSession, upload_id: str, status: str) -> N
         upload_id=upload_id,
         status=status,
         actor="system",
-        created_at=_now(),
+        created_at=now(),
     ))
 
 
@@ -46,5 +41,16 @@ async def record_transaction_status(db: AsyncSession, transaction_id: str, statu
         transaction_id=transaction_id,
         status=status,
         actor=actor,
-        created_at=_now(),
+        created_at=now(),
     ))
+
+
+async def trigger_workflow(upload_id: str) -> None:
+    """Run the AML workflow for an upload in a fresh DB session. Logs but does not propagate errors."""
+    try:
+        from src.bff.database import async_session_factory
+        async with async_session_factory() as workflow_db:
+            from src.aml_workflow.triggers import run_validation
+            await run_validation(upload_id, workflow_db)
+    except Exception:
+        logger.exception("Background workflow failed for upload %s", upload_id)

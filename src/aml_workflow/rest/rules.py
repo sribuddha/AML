@@ -1,7 +1,7 @@
 import json
-from datetime import datetime, UTC
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from src.core.utils import now as _now
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,7 +68,7 @@ async def get_rule(rule_id: str, db: AsyncSession = Depends(get_db)):
 
 @router.post("/api/rules", status_code=201)
 async def create_rule(body: RuleCreate, db: AsyncSession = Depends(get_db)):
-    now = datetime.now(UTC).isoformat()
+    now = _now()
     r = Rule(
         name=body.name,
         description=body.description,
@@ -90,7 +90,7 @@ async def update_rule(rule_id: str, body: RuleUpdate, db: AsyncSession = Depends
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    now = datetime.now(UTC).isoformat()
+    now = _now()
     existing.status = "inactive"
     existing.updated_at = now
 
@@ -117,7 +117,7 @@ async def update_rule_status(rule_id: str, body: RuleStatusUpdate, db: AsyncSess
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
     existing.status = body.status
-    existing.updated_at = datetime.now(UTC).isoformat()
+    existing.updated_at = _now()
     await db.commit()
     await db.refresh(existing)
     return _rule_to_response(existing)
@@ -128,7 +128,7 @@ async def delete_rule(rule_id: str, db: AsyncSession = Depends(get_db)):
     existing = await db.get(Rule, rule_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
-    now = datetime.now(UTC).isoformat()
+    now = _now()
     existing.status = "inactive"
     existing.updated_at = now
     await db.commit()
