@@ -7,6 +7,7 @@ Appends to --output (writes header only if file doesn't exist).
 import argparse
 import asyncio
 import csv
+import json
 import random
 import uuid
 from datetime import datetime, UTC, timedelta
@@ -15,9 +16,16 @@ from pathlib import Path
 from faker import Faker
 from sqlalchemy import text
 
+from sqlalchemy import select
+
+from src.aml_workflow.validator import evaluate_rules
 from src.bff.database import async_session_factory
+from src.core.models.rule import Rule
+from src.file_processor.service import _LOCATION_MAP
 
 fake = Faker()
+
+MAX_RETRIES = 10
 
 AMOUNT_DISTRIBUTION = [
     (1, 1000, 0.85),
@@ -87,6 +95,17 @@ async def generate(count: int, bad_rate: int, date: str, output: Path, session=N
         return await _generate(count, bad_rate, date, output, session)
 
 
+def _expand_location(row: dict) -> dict:
+    txn = dict(row)
+    loc_raw = txn.pop("location", "")
+    entry = _LOCATION_MAP.get(loc_raw)
+    if entry:
+        txn["city"], txn["state"], txn["country"] = entry
+    else:
+        txn["city"] = txn["state"] = txn["country"] = ""
+    return txn
+
+
 async def _generate(count: int, bad_rate: int, date: str, output: Path, session):
     result = await session.execute(text("SELECT account_id FROM account"))
     account_ids = [row[0] for row in result.fetchall()]
@@ -97,19 +116,52 @@ async def _generate(count: int, bad_rate: int, date: str, output: Path, session)
         print("ERROR: No customers or accounts found. Run 'python -m scripts.seed_db' first.")
         return
 
+    rule_rows = await session.execute(
+        select(Rule).where(Rule.status == "active", Rule.type == "deterministic")
+    )
+    rules = [
+        {"id": r.id, "name": r.name, "rules_json": r.rules_json}
+        for r in rule_rows.scalars().all()
+    ]
+
     main_date = date
     prev_date = (datetime.fromisoformat(date) - timedelta(days=1)).strftime("%Y-%m-%d")
 
     rows: list[dict] = []
+    eval_entries: list[dict] = []
     for i in range(count):
         use_main = random.random() < 0.95
         row_date = main_date if use_main else prev_date
-        row = generate_row(account_ids, customer_ids, row_date)
 
-        if bad_rate > 0 and i < bad_rate:
+        is_bad = bad_rate > 0 and i < bad_rate
+
+        if not is_bad and rules:
+            for attempt in range(MAX_RETRIES + 1):
+                row = generate_row(account_ids, customer_ids, row_date)
+                expanded = _expand_location(row)
+                if not evaluate_rules(expanded, rules):
+                    break
+            else:
+                # Fallback: force safe values after exhausting retries
+                row = generate_row(account_ids, customer_ids, row_date)
+                row["amount"] = f"{random.uniform(1, 7999):.2f}"
+                row["counterparty"] = "Acme Corp"
+                row["location"] = "New York"
+        else:
+            row = generate_row(account_ids, customer_ids, row_date)
+
+        if is_bad:
             row = corrupt_row(row, account_ids, customer_ids)
 
         rows.append(row)
+
+        # Eval entry for every valid (non-bad) clean row
+        if not is_bad:
+            eval_entries.append({
+                "source_txn_id": row["source_txn_id"],
+                "expected_escalate": False,
+                "stage": "clean",
+            })
 
     write_header = not output.exists()
     with open(output, "a", newline="") as f:
@@ -117,6 +169,11 @@ async def _generate(count: int, bad_rate: int, date: str, output: Path, session)
         if write_header:
             writer.writeheader()
         writer.writerows(rows)
+
+    eval_path = output.with_suffix(".eval")
+    with open(eval_path, "a") as f:
+        for entry in eval_entries:
+            f.write(json.dumps(entry) + "\n")
 
     bad_count = sum(
         1 for r in rows
@@ -130,6 +187,7 @@ async def _generate(count: int, bad_rate: int, date: str, output: Path, session)
     print(f"Generated {count} transactions -> {output}")
     print(f"  Valid rows:         {count - bad_count}")
     print(f"  Bad rows:           {bad_count}")
+    print(f"  Eval entries:       {len(eval_entries)} -> {eval_path}")
     print(f"  Main date ({main_date}): {sum(1 for r in rows if r['date'] == main_date)}")
     print(f"  Prev date ({prev_date}): {sum(1 for r in rows if r['date'] == prev_date)}")
 

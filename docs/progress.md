@@ -27,7 +27,7 @@
 | | Eval pipeline (upload → workflow → metrics → report) | ✅ Done |
 | | Eval integration tests (31 tests, 94% coverage) | ✅ Done |
 | **Scripts** | `init_db` — create tables via Alembic | ✅ Done |
-| | `seed_db` — 50 customers + 1-2 accounts each + 7 deterministic rules (`--force` flag) | ✅ Done |
+| | `seed_db` — 50 customers + 1-2 accounts each + 7 deterministic rules with severity values (`--force` flag) | ✅ Done |
 | | `delete_upload` — remove upload + all associated records (7 tables: ValidationResult, SAR, AuditLog, Transaction, RejectedRecord, chunks, UploadedFiles) + staging + data dir | ✅ Done |
 | | `test_generate_upload_data` (was `generate_sample`) — create test CSV with optional bad rows | ✅ Done |
 | | `retry_upload` — retry a failed upload with dedup | ✅ Done |
@@ -57,6 +57,7 @@
 | Rule format | JSON array of `{field, operator, value}` conditions. Validated as a monolith blob — no separate conditions table. |
 | Rule type | `type` TEXT column (`deterministic` / `llm`) with `server_default='deterministic'`. Engine queries `WHERE type = 'deterministic'`. |
 | Rule status | `status` TEXT column (active / inactive / draft) — not a boolean `enabled` flag. |
+| Rule severity | `severity` TEXT column (nullable, server_default='medium') — low, medium, high. Seeded per-rule. Included in rule dicts passed through the workflow and surfaced in the LLM prompt as `(severity: HIGH/MEDIUM/LOW)`. |
 | `Transaction.amount` | `Float` column type, not `Integer`. |
 | `validation_result` | No `rule_id` FK. Flagging stored as `flag_details` JSON (`{ruleID: ruleName}` map). |
 | | `details` column repurposed as `flag_details` (same DB column, renamed model attribute). |
@@ -75,8 +76,10 @@
 | Validation read endpoints | `by-date` groups by upload_id with clean/flagged counts. `details` returns only flagged rows with `source_txn_id`. `by-transaction` returns single latest result across all uploads. |
 | Prompts | Stored as standalone `.txt` files in `src/aml_workflow/prompts/`, loaded at import by `loader.py`. Auditable by non-developers, versionable independently. |
 | LLM system message | OpenAI: `messages[{"role": "system"}]`. Gemini: `system_instruction` in config dict (not top-level kwarg). Both use `str.format()` for templating (zero new dependencies). |
-| `.eval` format | JSONL — one JSON object per line, keyed by `source_txn_id`. Stage1 overwrites, stage2 appends. |
-| Stage2 scenarios | Hardcoded in `scripts/generate_stage2_fraud_data.py` (not read from DB). Covers both escalate and no-escalate cases to test LLM judgment. |
+| `.eval` format | JSONL — one JSON object per line, keyed by `source_txn_id`. Stage1 overwrites, stage2 appends. Each entry includes `stage` (clean/stage1/stage2/unknown) for per-stage metric grouping. |
+| Stage2 scenarios | Hardcoded in `scripts/generate_stage2_fraud_data.py` (not read from DB). Covers both escalate and no-escalate cases to test LLM judgment. Scenario names use `STAGE2_` prefix for consistency. |
+| Stage inference | `stage` field in `.eval` entries takes priority; fallback to scenario prefix (`STAGE1_`, `STAGE2_`) or `source_txn_id` prefix (`ST1_`, `ST2_`). Missing stage → `unknown`. |
+| Mode awareness | `uploaded_files.mode` column persists the workflow mode (`full`/`stage1`/`stage2`/`stage3`) at processing time. Eval response includes `mode` field. LLM triage metrics (`risk_level`) are meaningful primarily in `full`/`stage2`/`stage3` modes — in `stage1` mode all flagged rows are bypassed to `high` without LLM triage. |
 | `AsyncSqliteSaver` | Replaces `SqliteSaver` for v3.1.0 compatibility (async context manager required for async graphs). |
 | `delete_upload` | Deletes in FK-safe order: ValidationResult, SAR, AuditLog, Transaction, RejectedRecord, chunk rows, parent UploadedFiles — all 7 tables. Also removes both staging and data directories. |
 | `account.location` | Removed via migration `013_location_split.py`. Account model lives in `src.core.models.account`. |
@@ -100,7 +103,7 @@
 ### Prompt Refactor (✅ Done)
 - All triage prompts extracted from `llm.py` into standalone `.txt` files in `src/aml_workflow/prompts/`
 - `_build_triage_prompt` removed; replaced with `_build_rule_evidence()` + `_build_triage_messages()`
-- `llm.triage()` now accepts `rules: list[dict] | None` parameter; rule names/descriptions grounded in prompt
+- `llm.triage()` now accepts `rules: list[dict] | None` parameter; rule names/descriptions/severity grounded in prompt
 - Gemini `system_instruction` compatibility confirmed with `google-genai` v2.5.0
 - E2E test with real Gemini (`gemini-2.5-flash-lite`) verified
 
@@ -273,7 +276,9 @@
   - `POST /api/uploads/{upload_id}/eval` — run eval on processed upload, returns `EvalReportResponse`
 - **New DB column**: `uploaded_files.eval_file` (String, nullable) — stores path to `.eval` sidecar
 - **Migration**: `014_eval_file.py` (adds column, no data migration needed)
-- **Schema types**: `GenerateResponse` extended with `filename` and `eval_url`; new `EvalReportResponse`, `EvalEntry`, `PatternMetricsResponse`, `HallucinationResultResponse`, `CompletenessResultResponse`
+- **Schema types**: `GenerateResponse` extended with `filename` and `eval_url`; new `EvalReportResponse`, `EvalEntry`, `PatternMetricsResponse`, `HallucinationResultResponse`, `CompletenessResultResponse`, `StageMetricsResponse`
+- **Per-stage metrics**: Eval response now includes `stage_metrics` array with per-stage breakdown (clean/stage1/stage2) — each stage reports total, flagged, escalated, auto_reviewed counts plus `rule_catch_rate`, `llm_clear_rate`, `llm_escalate_rate`. `mode` field in response indicates the workflow mode used.
+- **LLM triage visibility**: Eval tracks `risk_level` alongside `status` — `escalated` (risk_level=high) vs `auto_reviewed` (risk_level=auto_reviewed) per stage, enabling separate measurement of rule-engine accuracy and LLM triage behavior.
 - **Frontend types**: `GenerateResponse` updated; new `CsvPreview`, `EvalEntry`, `EvalReport`, `PatternMetrics`, `HallucinationResult`, `CompletenessResult`, `UploadSummary.eval_file`
 
 ### Customer Name Persistence + "View all" Link (✅ Done)

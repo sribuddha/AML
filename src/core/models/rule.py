@@ -15,5 +15,6 @@ class Rule(Base):
     type: Mapped[str] = mapped_column(String, nullable=False, server_default="deterministic")
     status: Mapped[str] = mapped_column(String, nullable=False, server_default="active")
     rules_json: Mapped[str] = mapped_column(String, nullable=False)
+    severity: Mapped[str | None] = mapped_column(String, nullable=True, server_default="medium")
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)

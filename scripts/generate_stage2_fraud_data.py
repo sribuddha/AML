@@ -29,7 +29,7 @@ SCENARIOS: list[dict] = [
     # (tag, scenario_name, params, expected_escalate, ground_truth_label, reason_hint)
     {
         "tag": "GEO_OFFSHORE",
-        "scenario": "Geo + Offshore",
+        "scenario": "STAGE2_GEO_OFFSHORE",
         "amount": 9500.0, "counterparty": "Offshore Ltd",
         "location": "Iran",
         "expected_escalate": True,
@@ -38,7 +38,7 @@ SCENARIOS: list[dict] = [
     },
     {
         "tag": "STRUCTURING",
-        "scenario": "Structuring",
+        "scenario": "STAGE2_STRUCTURING",
         "amount": 9800.0, "counterparty": "Local Shop",
         "location": "Miami",
         "expected_escalate": True,
@@ -47,7 +47,7 @@ SCENARIOS: list[dict] = [
     },
     {
         "tag": "HIGH_VALUE",
-        "scenario": "High value only",
+        "scenario": "STAGE2_HIGH_VALUE",
         "amount": 55000.0, "counterparty": "Acme Corp",
         "location": "London",
         "expected_escalate": True,
@@ -56,7 +56,7 @@ SCENARIOS: list[dict] = [
     },
     {
         "tag": "GEO_ONLY",
-        "scenario": "Geo only",
+        "scenario": "STAGE2_GEO_ONLY",
         "amount": 200.0, "counterparty": "Local Shop",
         "location": "North Korea",
         "expected_escalate": True,
@@ -65,7 +65,7 @@ SCENARIOS: list[dict] = [
     },
     {
         "tag": "MULTI_LOW",
-        "scenario": "Multiple low signals",
+        "scenario": "STAGE2_MULTI_LOW",
         "amount": 7500.0, "counterparty": "Offshore Ltd",
         "location": "London",
         "expected_escalate": True,
@@ -74,34 +74,34 @@ SCENARIOS: list[dict] = [
     },
     {
         "tag": "THRESHOLD_ONLY",
-        "scenario": "Threshold only",
+        "scenario": "STAGE2_THRESHOLD_ONLY",
         "amount": 8500.0, "counterparty": "Local Shop",
         "location": "Boston",
-        "expected_escalate": False,
-        "ground_truth": "no_escalate_threshold",
-        "reason_hint": "single low-severity flag",
+        "expected_escalate": True,
+        "ground_truth": "escalate_threshold",
+        "reason_hint": "flagged by threshold proximity rule",
     },
     {
         "tag": "ROUND_ONLY",
-        "scenario": "Round amount only",
+        "scenario": "STAGE2_ROUND_ONLY",
         "amount": 5000.0, "counterparty": "Utility Co",
         "location": "Chicago",
-        "expected_escalate": False,
-        "ground_truth": "no_escalate_round",
-        "reason_hint": "single low-severity flag",
+        "expected_escalate": True,
+        "ground_truth": "escalate_round",
+        "reason_hint": "flagged by round amount rule",
     },
     {
         "tag": "LOW_OFFSHORE",
-        "scenario": "Small + offshore",
+        "scenario": "STAGE2_LOW_OFFSHORE",
         "amount": 3000.0, "counterparty": "Offshore Ltd",
         "location": "London",
-        "expected_escalate": False,
-        "ground_truth": "no_escalate_low_offshore",
-        "reason_hint": "low amount with offshore but no corroborating signals",
+        "expected_escalate": True,
+        "ground_truth": "escalate_low_offshore",
+        "reason_hint": "flagged by offshore counterparty rule",
     },
     {
         "tag": "NEGATIVE",
-        "scenario": "Negative amount",
+        "scenario": "STAGE2_NEGATIVE",
         "amount": -100.0, "counterparty": "Refund Co",
         "location": "Boston",
         "expected_escalate": True,
@@ -132,6 +132,7 @@ def _eval_entry(scenario: dict, date: str, index: int) -> dict:
         "expected_escalate": scenario["expected_escalate"],
         "ground_truth": scenario["ground_truth"],
         "reason_hint": scenario["reason_hint"],
+        "stage": "stage2",
     }
 
 

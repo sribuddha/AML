@@ -52,12 +52,15 @@ def _build_rule_evidence(flag_details: dict[str, str], rules: list[dict] | None)
         return "None"
     lines: list[str] = []
     for rule_id, rule_name in flag_details.items():
+        severity = "medium"
         condition = ""
         if rules:
             rule_def = next((r for r in rules if r["id"] == rule_id), None)
-            if rule_def and rule_def.get("rules_json"):
-                condition = f" — {rule_def['rules_json']}"
-        lines.append(f"- {rule_name}{condition}")
+            if rule_def:
+                severity = rule_def.get("severity", "medium")
+                if rule_def.get("rules_json"):
+                    condition = f" — {rule_def['rules_json']}"
+        lines.append(f"- {rule_name} (severity: {severity.upper()}){condition}")
     return "\n".join(lines)
 
 
@@ -131,7 +134,9 @@ def _build_sar_prompt(transaction: dict, flag_details: dict[str, str], triage: T
         f"- Date: {transaction.get('date', 'N/A')}\n"
         f"\nEscalation Reason: {triage.reason}\n"
         f"Flagged Rules: {', '.join(flag_details.values()) if flag_details else 'None'}\n"
-        f"\nWrite a detailed SAR narrative. Use ONLY the numbers and facts provided above — do not invent amounts, values, or account numbers."
+        f"\nWrite a detailed SAR narrative. Mention each flagged rule by name and explain why "
+        f"the transaction triggered it. Use ONLY the numbers and facts provided above "
+        f"— do not invent amounts, values, or account numbers."
     )
 
 
@@ -252,6 +257,7 @@ def _build_sar_batch_prompt(
         '\nRespond with ONLY a valid JSON object containing a "sars" array '
         'with one entry per transaction in the same order:\n'
         '{"sars": [{"source_txn_id": "...", "content": "Full SAR narrative..."}, ...]}\n'
+        "In each SAR narrative, mention every flagged rule by name and explain why the transaction triggered it. "
         "Use ONLY the numbers and facts provided above for each transaction — do not invent amounts, values, or account numbers."
     )
     return "\n\n".join(blocks)

@@ -16,6 +16,7 @@ from pathlib import Path
 from faker import Faker
 from sqlalchemy import select
 
+from src.aml_workflow.validator import evaluate_rules
 from src.core.models.rule import Rule
 from src.bff.database import async_session_factory
 from src.file_processor.service import _LOCATION_MAP
@@ -26,6 +27,19 @@ for loc, (city, state, country) in _LOCATION_MAP.items():
     _COUNTRY_TO_LOCATIONS.setdefault(country, []).append(loc)
 
 fake = Faker()
+
+MAX_RETRIES = 10
+
+
+def _expand_location(row: dict) -> dict:
+    txn = dict(row)
+    loc_raw = txn.pop("location", "")
+    entry = _LOCATION_MAP.get(loc_raw)
+    if entry:
+        txn["city"], txn["state"], txn["country"] = entry
+    else:
+        txn["city"] = txn["state"] = txn["country"] = ""
+    return txn
 
 COUNTERPARTIES = [
     "Acme Corp", "Global Trading", "Refund Co", "Local Shop",
@@ -121,6 +135,11 @@ async def _generate(count: int, date: str, output: Path, session):
         print("ERROR: No active deterministic rules found. Run 'python -m scripts.seed_db' first.")
         return
 
+    rule_dicts = [
+        {"id": r.id, "name": r.name, "rules_json": r.rules_json}
+        for r in rules
+    ]
+
     from sqlalchemy import text
     acct_result = await session.execute(text("SELECT account_id FROM account"))
     account_ids = [row[0] for row in acct_result.fetchall()]
@@ -157,14 +176,22 @@ async def _generate(count: int, date: str, output: Path, session):
             row_counter += 1
             use_main = random.random() < 0.95
             row_date = main_date if use_main else prev_date
-            txn = _generate_transaction(account_ids, customer_ids, row_date, conditions)
+
+            for attempt in range(MAX_RETRIES + 1):
+                txn = _generate_transaction(account_ids, customer_ids, row_date, conditions)
+                expanded = _expand_location(txn)
+                triggered = evaluate_rules(expanded, rule_dicts)
+                if str(rule.id) in triggered or str(rule.name) in triggered.values():
+                    break
+
             rows.append(txn)
             eval_entries.append({
                 "source_txn_id": txn["source_txn_id"],
                 "scenario": f"STAGE1_{rule.name.upper().replace(' ', '_')}",
                 "expected_escalate": True,
                 "ground_truth": rule.name,
-                "reason_hint": "Stage 1 auto-escalation",
+                "reason_hint": f"Rule-based: {rule.name}",
+                "stage": "stage1",
             })
 
     output_path = Path(output)

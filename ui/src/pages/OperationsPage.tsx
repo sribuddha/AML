@@ -16,9 +16,9 @@ const STATUS_TABS = ["All", "Uploaded", "Processing", "Pending Review", "Complet
 export default function OperationsPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const initialTabIsSearch = useRef(searchParams.get("tab") === "search")
+  const initialTabIsUpload = useRef(searchParams.get("tab") === "upload")
   const [activeTab, setActiveTab] = useState<"upload" | "search">(
-    initialTabIsSearch.current ? "search" : "upload",
+    initialTabIsUpload.current ? "upload" : "search",
   )
 
   const [uploadId, setUploadId] = useState("")
@@ -61,7 +61,7 @@ export default function OperationsPage() {
   const handleSearch = () => { setPage(1); fetchUploads(1) }
 
   useEffect(() => {
-    if (initialTabIsSearch.current) {
+    if (!initialTabIsUpload.current) {
       fetchUploads(1)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -141,8 +141,8 @@ export default function OperationsPage() {
     <PageShell title="Operations" description="Upload files and manage uploads">
       <TabSet
         tabs={[
-          { id: "upload", label: "Upload" },
           { id: "search", label: "Search Uploads" },
+          { id: "upload", label: "Upload" },
         ]}
         active={activeTab}
         onChange={(id) => setActiveTab(id as "upload" | "search")}

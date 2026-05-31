@@ -266,11 +266,25 @@ class CompletenessResultResponse(BaseModel):
     score: float = 1.0
 
 
+class StageMetricsResponse(BaseModel):
+    stage: str
+    total: int = 0
+    flagged: int = 0
+    escalated: int = 0
+    auto_reviewed: int = 0
+    rule_catch_rate: float = 0.0
+    llm_clear_rate: float | None = None
+    llm_escalate_rate: float | None = None
+    pattern_metrics: list[PatternMetricsResponse] = []
+
+
 class EvalReportResponse(BaseModel):
     upload_id: str
+    mode: str = "full"
     total_transactions: int = 0
     total_anomalous: int = 0
     total_flagged: int = 0
+    stage_metrics: list[StageMetricsResponse] = []
     pattern_metrics: list[PatternMetricsResponse] = []
     hallucination_results: list[HallucinationResultResponse] = []
     completeness_results: list[CompletenessResultResponse] = []

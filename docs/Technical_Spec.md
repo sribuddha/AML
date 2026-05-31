@@ -311,7 +311,7 @@ Background LangGraph state machine that processes uploaded transactions through 
 - **Two-stage triage:**
   - `triage()` — stage2: LLM receives transaction details + rule evidence + optional enriched context. Confidence threshold is instructed in the prompt. Returns `TriageDecision{escalate, reason, confidence}`.
   - `triage_stage3()` — stage3: LLM receives transaction details + rule evidence + recent transaction history for the same customer. Confidence threshold is instructed in the prompt. Returns `TriageDecision{escalate, reason, confidence}`.
-- **Rules context:** Both `triage()` and `triage_stage3()` accept a `rules: list[dict] | None` parameter. When provided, rule names and descriptions are included in the prompt to ground the LLM's escalation decision in the deterministic rules that triggered.
+- **Rules context:** Both `triage()` and `triage_stage3()` accept a `rules: list[dict] | None` parameter. When provided, rule names, descriptions, and severity are included in the prompt to ground the LLM's escalation decision in the deterministic rules that triggered.
 - **Enriched context:** `triage()` accepts an optional `enriched_context: dict | None` parameter. When provided, customer-level aggregations (30d stats, structuring alerts, velocity z-score, dormancy, account profile) are appended as an `## Enriched Context` block to the existing user prompt — same pattern as stage3 appends "Recent customer history".
 - **Provider-specific formatting:** OpenAI receives system/user messages; Gemini uses `system_instruction` in the config dict.
 - **Triage structured output:** OpenAI uses `response_format` with `json_schema`; Gemini uses `response_mime_type: application/json` + `response_schema`. Both request `{escalate: bool, reason: string, confidence: float}`.
@@ -336,7 +336,7 @@ The graph accepts a `mode` parameter that controls LLM usage and pipeline depth:
 | `stage3` | Runs | LLM triage with enriched context + rule evidence | LLM deep-dive with customer history | LLM-generated SAR | Full pipeline with AI analysis |
 | `full` | Runs | Same as stage3 | Same as stage3 | LLM-generated SAR | Full pipeline (alias for stage3) |
 
-Default: `DEFAULT_MODE = "stage2"` in `src/aml_workflow/triggers.py:13`. Change the constant to switch modes.
+Default: `DEFAULT_MODE = "full"` in `src/aml_workflow/triggers.py`. Change the constant to switch modes.
 
 #### Human-in-the-Loop (Interrupt)
 
@@ -365,10 +365,12 @@ Without a checkpointer, `interrupt()` still pauses but cannot resume — the gra
 **File:** `src/aml_workflow/eval/`
 
 - **5 fraud patterns:** structuring, velocity, impossible_travel, round_trip, watchlist
-- **Detection metrics:** precision, recall, F1 per pattern (via `_compute_metrics` — uses ground-truth count vs correctly-flagged count)
+- **Pattern metrics (`pattern_metrics`):** precision, recall, F1 per pattern (via `_compute_metrics` — uses ground-truth count vs correctly-flagged count)
+- **Stage metrics (`stage_metrics`):** Per-stage breakdown (clean/stage1/stage2) with total, flagged, escalated, auto_reviewed counts plus `rule_catch_rate`, `llm_clear_rate`, `llm_escalate_rate`. The `mode` field in the response indicates the workflow mode used at processing time.
+- **LLM triage visibility:** Eval tracks `risk_level` alongside `status` — `escalated` (risk_level=high) vs `auto_reviewed` (risk_level=auto_reviewed) per stage, enabling separate measurement of rule-engine accuracy and LLM triage behavior.
 - **Hallucination check (`hallucination.py`):** Extracts `$`-prefixed numbers and capitalized entities from SAR narrative; verifies against evidence set (transaction fields + formatted amounts + rule names). 0.01 tolerance for numeric comparisons.
 - **Completeness check (`completeness.py`):** For each triggered rule, checks if key words (>3 chars) from the rule name appear in the SAR narrative.
-- **EvalReport:** Includes overall metrics, hallucination-free rate, average completeness, per-pattern breakdown.
+- **EvalReport:** Includes overall metrics, hallucination-free rate, average completeness, per-pattern breakdown, per-stage breakdown, and mode.
 
 ---
 
@@ -699,6 +701,8 @@ No service-to-service HTTP calls. Internal communication is in-process:
 | failed_count | INTEGER | with default=0 |
 | failed_db_count | INTEGER | with server_default='0' |
 | uploaded_at | TEXT | ISO datetime |
+| eval_file | TEXT | nullable — path to `.eval` sidecar for eval datasets |
+| mode | TEXT | nullable — workflow mode used at processing time (`full`/`stage1`/`stage2`/`stage3`) |
 | created_at | TEXT | ISO datetime |
 | updated_at | TEXT | ISO datetime |
 
@@ -746,6 +750,7 @@ No service-to-service HTTP calls. Internal communication is in-process:
 | type | TEXT | NOT NULL, server_default='deterministic' — `deterministic` or `llm` |
 | status | TEXT | NOT NULL, server_default='active' — active, inactive, draft |
 | rules_json | TEXT | NOT NULL — JSON array of condition objects (deterministic) or prompt/guidelines (llm) |
+| severity | TEXT | nullable, server_default='medium' — low, medium, high |
 | created_at | TEXT | ISO datetime |
 | updated_at | TEXT | ISO datetime |
 

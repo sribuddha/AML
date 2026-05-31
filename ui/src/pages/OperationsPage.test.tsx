@@ -93,26 +93,27 @@ describe("OperationsPage", () => {
     expect(screen.getByText("Upload files and manage uploads")).toBeInTheDocument();
   });
 
-  it("shows Upload tab active by default", () => {
+  it("shows Search Uploads tab active by default", () => {
     renderPage();
-    const uploadTab = screen.getByText("Upload");
-    expect(uploadTab.className).toContain("bg-white");
-    expect(uploadTab.className).toContain("shadow-sm");
-    expect(screen.getByText(/Drag.*drop.*CSV/i)).toBeInTheDocument();
-  });
-
-  it("switches to Search Uploads tab", () => {
-    renderPage();
-    fireEvent.click(screen.getByText("Search Uploads"));
     const searchTab = screen.getByText("Search Uploads");
     expect(searchTab.className).toContain("bg-white");
     expect(searchTab.className).toContain("shadow-sm");
     expect(screen.getByPlaceholderText("Upload ID")).toBeInTheDocument();
   });
 
+  it("switches to Upload tab", () => {
+    renderPage();
+    fireEvent.click(screen.getByText("Upload"));
+    const uploadTab = screen.getByText("Upload");
+    expect(uploadTab.className).toContain("bg-white");
+    expect(uploadTab.className).toContain("shadow-sm");
+    expect(screen.getByText(/Drag.*drop.*CSV/i)).toBeInTheDocument();
+  });
+
   it("shows upload result after file upload", async () => {
     mockUpload.mockResolvedValue({ total_rows: 100, accepted_count: 95, failed_count: 5 });
     renderPage();
+    fireEvent.click(screen.getByText("Upload"));
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     const file = new File(["a,b,c\n1,2,3"], "test.csv", { type: "text/csv" });
     fireEvent.change(input, { target: { files: [file] } });
@@ -128,6 +129,7 @@ describe("OperationsPage", () => {
   it("shows View Uploads link after upload", async () => {
     mockUpload.mockResolvedValue({ total_rows: 100, accepted_count: 95, failed_count: 5 });
     renderPage();
+    fireEvent.click(screen.getByText("Upload"));
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["a"], "test.csv", { type: "text/csv" })] } });
     fireEvent.click(screen.getByRole("button", { name: /upload test.csv/i }));
@@ -138,9 +140,9 @@ describe("OperationsPage", () => {
 
   it("renders status filter tabs in search view", () => {
     renderPage();
-    fireEvent.click(screen.getByText("Search Uploads"));
     ["All", "Uploaded", "Processing", "Pending Review", "Complete", "Failed"].forEach(status => {
-      expect(screen.getByText(status)).toBeInTheDocument();
+      const buttons = screen.getAllByText(status);
+      expect(buttons.length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -164,15 +166,18 @@ describe("OperationsPage", () => {
     });
   });
 
-  it("shows unsearched hint before first search", () => {
+  it("auto-searches on mount and shows empty state when no results", async () => {
+    mockGet.mockResolvedValue({ data: [], total: 0, page: 1, per_page: 25, total_pages: 0 });
     renderPage();
-    fireEvent.click(screen.getByText("Search Uploads"));
-    expect(screen.getByText(/Enter an Upload ID/)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("No uploads found.")).toBeInTheDocument();
+    });
   });
 
   it("calls toast.error on upload error", async () => {
     mockUpload.mockRejectedValue(new Error("Upload failed"));
     renderPage();
+    fireEvent.click(screen.getByText("Upload"));
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["a"], "test.csv", { type: "text/csv" })] } });
     fireEvent.click(screen.getByRole("button", { name: /upload test.csv/i }));
@@ -345,17 +350,15 @@ describe("OperationsPage", () => {
     });
   });
 
-  it("auto-searches with ?tab=search URL param", async () => {
+  it("does not auto-search with ?tab=upload URL param", async () => {
     mockGet.mockResolvedValue(mockResponse);
     render(
-      <MemoryRouter initialEntries={["/operations?tab=search"]}>
+      <MemoryRouter initialEntries={["/operations?tab=upload"]}>
         <OperationsPage />
       </MemoryRouter>
     );
-    await waitFor(() => {
-      expect(screen.getByText("data.csv")).toBeInTheDocument();
-    });
-    expect(mockGet).toHaveBeenCalledWith("/api/uploads/search", expect.objectContaining({ page: 1 }));
+    expect(screen.getByText(/Drag.*drop.*CSV/i)).toBeInTheDocument();
+    expect(mockGet).not.toHaveBeenCalled();
   });
 
   it("closes eval modal via \u00D7 button", async () => {
@@ -388,6 +391,7 @@ describe("OperationsPage", () => {
   it("clicks View Uploads link after upload", async () => {
     mockUpload.mockResolvedValue({ total_rows: 100, accepted_count: 95, failed_count: 5 });
     renderPage();
+    fireEvent.click(screen.getByText("Upload"));
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(["a"], "test.csv", { type: "text/csv" })] } });
     fireEvent.click(screen.getByRole("button", { name: /upload test.csv/i }));

@@ -9,6 +9,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.core.models.rule import Rule
 from src.core.models.customer import Customer
 from src.core.models.account import Account
+from src.core.models.transaction import Transaction
+from src.core.models.uploaded_files import UploadedFiles
+from src.core.models.validation_result import ValidationResult
+from src.core.models.sar import SAR
+from src.core.models.enrichment_snapshot import EnrichmentSnapshot
+from src.aml_workflow.models import UploadStatus, TransactionStatus
+from src.file_processor.models import RejectedRecord
 from src.bff.database import Base, async_session_factory
 
 fake = Faker()
@@ -124,6 +131,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
                 description="Flags transactions over $10,000",
                 type="deterministic",
                 status="active",
+                severity="high",
                 rules_json=json.dumps([{"field": "amount", "operator": ">", "value": 10000}]),
                 created_at=now,
                 updated_at=now,
@@ -133,6 +141,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
                 description="Flags negative transaction amounts",
                 type="deterministic",
                 status="active",
+                severity="low",
                 rules_json=json.dumps([{"field": "amount", "operator": "<", "value": 0}]),
                 created_at=now,
                 updated_at=now,
@@ -142,6 +151,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
                 description="Flags transactions from offshore locations",
                 type="deterministic",
                 status="active",
+                severity="medium",
                 rules_json=json.dumps([{"field": "country", "operator": "==", "value": "Cayman Islands"}]),
                 created_at=now,
                 updated_at=now,
@@ -151,6 +161,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
                 description="Flags transactions to/from high-risk jurisdictions",
                 type="deterministic",
                 status="active",
+                severity="high",
                 rules_json=json.dumps([{"field": "country", "operator": "in", "value": ["Iran", "North Korea", "Syria", "Crimea"]}]),
                 created_at=now,
                 updated_at=now,
@@ -160,6 +171,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
                 description="Flags transactions with offshore-related counterparties",
                 type="deterministic",
                 status="active",
+                severity="medium",
                 rules_json=json.dumps([{"field": "counterparty", "operator": "contains", "value": "Offshore"}]),
                 created_at=now,
                 updated_at=now,
@@ -169,6 +181,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
                 description="Flags transaction amounts near reporting threshold",
                 type="deterministic",
                 status="active",
+                severity="low",
                 rules_json=json.dumps([{"field": "amount", "operator": ">", "value": 8000}]),
                 created_at=now,
                 updated_at=now,
@@ -178,6 +191,7 @@ async def seed(num_customers: int, dry_run: bool = False, force: bool = False):
                 description="Flags round-dollar amounts often used in structuring",
                 type="deterministic",
                 status="active",
+                severity="low",
                 rules_json=json.dumps([{"field": "amount", "operator": "in", "value": [1000, 5000, 10000, 20000, 50000]}]),
                 created_at=now,
                 updated_at=now,

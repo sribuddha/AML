@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
@@ -15,8 +16,13 @@ from aml_observability import (
 )
 
 
+def _load_env() -> None:
+    _dotenv = Path(__file__).resolve().parent.parent.parent / ".env"
+    load_dotenv(_dotenv)
+
+
 def setup() -> None:
-    load_dotenv()
+    _load_env()
     _init_backend(
         provider=os.environ.get("OBSERVABILITY_PROVIDER", "none"),
         host=os.environ.get("LANGFUSE_HOST", "http://127.0.0.1:3000"),

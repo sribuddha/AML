@@ -69,7 +69,7 @@ python -m scripts.seed_db
 **Prerequisite:** The workflow reads rules from the `rule` table. You must seed rules before running the server or submitting uploads — otherwise no transactions will be flagged.
 
 ```bash
-# Default: 50 customers + 7 rules (High Value Check, Negative Amount, Offshore Location,
+# Default: 50 customers + 7 rules with severity (High Value Check, Negative Amount, Offshore Location,
 #          High Risk Jurisdiction, Offshore Counterparty, Threshold Proximity, Round Amount)
 python -m scripts.seed_db
 
@@ -135,7 +135,7 @@ python -m scripts.generate_upload_data --count 500 --bad-rate 25 --date 2026-06-
 ```
 
 ### `generate_stage1_fraud_data`
-Reads all active deterministic rules from the DB and generates transactions guaranteed to trigger them. Distribution is exact (`--count` produces exactly that many rows). Also writes a `.eval` file with expected escalation labels.
+Reads all active deterministic rules from the DB and generates transactions guaranteed to trigger them. Distribution is exact (`--count` produces exactly that many rows). Also writes a `.eval` file with expected escalation labels. Each `.eval` entry includes a `"stage": "stage1"` field for per-stage metric grouping.
 
 ```bash
 python -m scripts.generate_stage1_fraud_data --count 300 --output work/upload.csv
@@ -143,7 +143,7 @@ python -m scripts.generate_stage1_fraud_data --count 100 --date 2026-06-15 --out
 ```
 
 ### `generate_stage2_fraud_data`
-Generates scenario-based transactions for LLM triage evaluation. Uses 9 hardcoded scenarios (both escalate and no-escalate). Distribution is exact. Appends to CSV and appends `.eval` entries.
+Generates scenario-based transactions for LLM triage evaluation. Uses 9 hardcoded scenarios (both escalate and no-escalate). Distribution is exact. Appends to CSV and appends `.eval` entries. Each `.eval` entry includes a `"stage": "stage2"` field for per-stage metric grouping.
 
 ```bash
 python -m scripts.generate_stage2_fraud_data --count 20 --output work/upload.csv
@@ -225,6 +225,22 @@ cd ui
 npx playwright test
 ```
 
+## Vulnerability Scanning
+
+```bash
+# Python dependency CVE scan (against uv.lock)
+uv run pip-audit
+
+# Python SAST scan (code-level issues)
+uv run bandit -r src/
+
+# Frontend dependency CVE scan
+cd ui
+npm audit
+```
+
+All three scans should report zero findings on a clean project. Bandit skips test files and generated data by design — it only scans `src/`.
+
 ## Retry Upload
 
 ```bash
@@ -251,7 +267,7 @@ python -m scripts.run_eval --csv work/fraud_dataset.csv
 python -m scripts.run_eval --generate --count 2000 --seed-rules
 ```
 
-The eval report is printed to console and saved as `work/fraud_dataset.eval.json`.
+The eval report is printed to console and saved as `work/fraud_dataset.eval.json`. The report includes `pattern_metrics` (per-fraud-pattern precision/recall/F1), `stage_metrics` (per-stage breakdown with rule_catch_rate, llm_clear_rate, llm_escalate_rate), and the `mode` the upload was processed in.
 
 ## Triage Testing with Real LLM
 

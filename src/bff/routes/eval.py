@@ -11,11 +11,31 @@ from src.aml_workflow.eval.hallucination import check_sar as check_hallucination
 from src.core.models.sar import SAR
 from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
-from src.core.schemas import EvalReportResponse
+from src.core.schemas import (
+    EvalReportResponse,
+    PatternMetricsResponse,
+    StageMetricsResponse,
+)
 from src.core.models.transaction import Transaction
 from src.core.models.uploaded_files import UploadedFiles
 
 router = APIRouter()
+
+_STAGE_INFERRED: dict[str, str] = {}
+
+
+def _infer_stage(entry: dict) -> str:
+    if "stage" in entry:
+        return entry["stage"]
+    scenario = entry.get("scenario", "")
+    src_id = entry.get("source_txn_id", "")
+    if scenario.startswith("STAGE1_") or src_id.startswith("ST1_"):
+        return "stage1"
+    if scenario.startswith("STAGE2_") or src_id.startswith("ST2_"):
+        return "stage2"
+    if scenario.startswith("STAGE3_") or src_id.startswith("ST3_"):
+        return "stage3"
+    return "unknown"
 
 
 def _load_eval_entries(eval_path: str) -> list[dict]:
@@ -48,6 +68,8 @@ async def evaluate_upload(
     if not upload.eval_file:
         raise HTTPException(status_code=400, detail="No eval data associated with this upload")
 
+    mode = upload.mode or "full"
+
     eval_entries = _load_eval_entries(upload.eval_file)
     if not eval_entries:
         raise HTTPException(status_code=400, detail="Eval file is empty or not found")
@@ -72,40 +94,78 @@ async def evaluate_upload(
     sars = sar_rows.scalars().all()
     sar_by_txn = {s.transaction_id: s for s in sars}
 
-    # Compute pattern metrics
-    pattern_groups: dict[str, dict] = {}
-    flagged_total = 0
-
+    # Group entries by stage
+    stage_groups: dict[str, dict[str, dict]] = {}
     for src_id, exp in expected.items():
+        stage = _infer_stage(exp)
+        if stage not in stage_groups:
+            stage_groups[stage] = {"total": 0, "flagged": 0, "escalated": 0, "auto_reviewed": 0, "patterns": {}}
+
         pattern = exp.get("scenario", "unknown")
-        if pattern not in pattern_groups:
-            pattern_groups[pattern] = {"total": 0, "flagged": 0}
+        if pattern not in stage_groups[stage]["patterns"]:
+            stage_groups[stage]["patterns"][pattern] = {"total": 0, "flagged": 0}
 
         txn = txn_map.get(src_id)
         if txn is None:
             continue
-        pattern_groups[pattern]["total"] += 1
+
+        stage_groups[stage]["total"] += 1
+        stage_groups[stage]["patterns"][pattern]["total"] += 1
 
         vr = vr_map.get(txn.id)
         if vr is None:
             continue
-        if vr.risk_level == "high":
-            pattern_groups[pattern]["flagged"] += 1
-            flagged_total += 1
+        if vr.status == "flagged":
+            stage_groups[stage]["flagged"] += 1
+            stage_groups[stage]["patterns"][pattern]["flagged"] += 1
+            if vr.risk_level == "high":
+                stage_groups[stage]["escalated"] += 1
+            elif vr.risk_level == "auto_reviewed":
+                stage_groups[stage]["auto_reviewed"] += 1
 
-    anomalous_total = sum(g["total"] for g in pattern_groups.values())
+    flagged_total = sum(g["flagged"] for g in stage_groups.values())
+    anomalous_total = sum(g["total"] for g in stage_groups.values())
 
-    pattern_metrics = []
-    for pattern, counts in sorted(pattern_groups.items()):
-        prec, rec, f1 = _compute_metrics(counts["total"], counts["flagged"])
-        pattern_metrics.append({
-            "pattern": pattern,
-            "total": counts["total"],
-            "flagged": counts["flagged"],
-            "precision": prec,
-            "recall": rec,
-            "f1": f1,
-        })
+    # Build per-stage metrics
+    stage_metrics: list[StageMetricsResponse] = []
+    all_pattern_metrics: list[PatternMetricsResponse] = []
+
+    for stage_name in sorted(stage_groups.keys()):
+        sg = stage_groups[stage_name]
+        total = sg["total"]
+        flagged = sg["flagged"]
+        escalated = sg["escalated"]
+        auto_reviewed = sg["auto_reviewed"]
+
+        rule_catch_rate = flagged / total if total > 0 else 0.0
+        llm_clear_rate = (auto_reviewed / flagged) if flagged > 0 else None
+        llm_escalate_rate = (escalated / flagged) if flagged > 0 else None
+
+        pattern_metrics = []
+        for pattern, counts in sorted(sg["patterns"].items()):
+            prec, rec, f1 = _compute_metrics(counts["total"], counts["flagged"])
+            pm = PatternMetricsResponse(
+                pattern=pattern,
+                total=counts["total"],
+                flagged=counts["flagged"],
+                precision=prec,
+                recall=rec,
+                f1=f1,
+            )
+            pattern_metrics.append(pm)
+            all_pattern_metrics.append(pm)
+
+        stage_metrics.append(StageMetricsResponse(
+            stage=stage_name,
+            total=total,
+            flagged=flagged,
+            escalated=escalated,
+            auto_reviewed=auto_reviewed,
+            rule_catch_rate=round(rule_catch_rate, 4),
+            llm_clear_rate=round(llm_clear_rate, 4) if llm_clear_rate is not None else None,
+            llm_escalate_rate=round(llm_escalate_rate, 4) if llm_escalate_rate is not None else None,
+            pattern_metrics=pattern_metrics,
+        ))
 
     # Hallucination checks
     hallucination_results = []
@@ -119,7 +179,6 @@ async def evaluate_upload(
             if isinstance(vr.flag_details, dict):
                 flag_dict = {str(k): str(v) for k, v in vr.flag_details.items()}
 
-        # Collect related customer transactions for legitimate context
         related_txns = [
             {"source_txn_id": rt.source_txn_id, "amount": rt.amount, "counterparty": rt.counterparty}
             for rt in transactions
@@ -177,11 +236,11 @@ async def evaluate_upload(
             "score": result.score,
         })
 
-    # Overall metrics
-    total = len(pattern_groups)
-    overall_prec = sum(p["precision"] for p in pattern_metrics) / total if total > 0 else 0.0
-    overall_rec = sum(p["recall"] for p in pattern_metrics) / total if total > 0 else 0.0
-    overall_f1 = sum(p["f1"] for p in pattern_metrics) / total if total > 0 else 0.0
+    # Overall metrics (backward compat)
+    total = len(all_pattern_metrics)
+    overall_prec = sum(p.precision for p in all_pattern_metrics) / total if total > 0 else 0.0
+    overall_rec = sum(p.recall for p in all_pattern_metrics) / total if total > 0 else 0.0
+    overall_f1 = sum(p.f1 for p in all_pattern_metrics) / total if total > 0 else 0.0
 
     hf_total = len(hallucination_results)
     hf_passed = sum(1 for h in hallucination_results if h["passed"])
@@ -192,10 +251,12 @@ async def evaluate_upload(
 
     return EvalReportResponse(
         upload_id=upload_id,
+        mode=mode,
         total_transactions=len(transactions),
         total_anomalous=anomalous_total,
         total_flagged=flagged_total,
-        pattern_metrics=pattern_metrics,
+        stage_metrics=stage_metrics,
+        pattern_metrics=all_pattern_metrics,
         hallucination_results=hallucination_results,
         completeness_results=completeness_results,
         overall_precision=round(overall_prec, 4),

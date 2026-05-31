@@ -43,6 +43,10 @@ show_missing = true
 skip_covered = true
 
 [dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "pip-audit>=2.10.0",
+]
 test = [
     "httpx>=0.28.1",
     "pytest>=9.0.3",

@@ -182,6 +182,7 @@ async def generate(args) -> Path:
                 "expected_escalate": True,
                 "ground_truth": rule.name,
                 "reason_hint": f"Triggers rule: {rule.name}",
+                "stage": "stage1",
             })
 
     for _ in range(args.clean_count):

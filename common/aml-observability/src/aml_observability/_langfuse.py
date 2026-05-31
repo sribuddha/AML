@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 from collections.abc import Sequence
 
 from aml_observability.base import ObservabilityBackend
+
+logger = logging.getLogger("aml_observability.langfuse")
 
 
 class LangfuseBackend(ObservabilityBackend):
@@ -33,8 +36,10 @@ class LangfuseBackend(ObservabilityBackend):
             try:
                 self._get_lf()
                 from langfuse.langchain import CallbackHandler
-                self._handler = CallbackHandler()
-            except Exception:
+                self._handler = CallbackHandler(public_key=self._public_key)
+                logger.info("Langfuse CallbackHandler initialized")
+            except Exception as e:
+                logger.warning("Failed to init Langfuse CallbackHandler: %s", e)
                 self._handler = None
             self._handler_setup = True
         h = self._handler
@@ -49,8 +54,10 @@ class LangfuseBackend(ObservabilityBackend):
                 api_key=client.api_key,
                 base_url=client.base_url if hasattr(client, "base_url") else None,
             )
+            logger.info("Langfuse OpenAI wrapper applied")
             return lf_client
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to wrap OpenAI client with Langfuse: %s", e)
             return client
 
     def wrap_gemini(self, client: Any) -> Any:
@@ -76,13 +83,16 @@ class LangfuseBackend(ObservabilityBackend):
                 return result
 
             client.aio.models.generate_content = traced
+            logger.info("Langfuse Gemini wrapper applied")
             return client
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to wrap Gemini client with Langfuse: %s", e)
             return client
 
     def shutdown(self) -> None:
         try:
             if self._lf is not None:
                 self._lf.flush()
-        except Exception:
-            pass
+                logger.info("Langfuse client flushed")
+        except Exception as e:
+            logger.warning("Langfuse shutdown error: %s", e)

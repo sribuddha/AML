@@ -109,7 +109,7 @@ async def load_data_node(state: WorkflowState, db: AsyncSession, llm: LLMClient 
             select(Rule).where(Rule.status == "active", Rule.type == "deterministic")
         )
         rules = [
-            {"id": r.id, "name": r.name, "rules_json": r.rules_json}
+            {"id": r.id, "name": r.name, "rules_json": r.rules_json, "severity": r.severity or "medium"}
             for r in rule_rows.scalars().all()
         ]
 
