@@ -145,9 +145,9 @@ describe("CompliancePage", () => {
     expect(screen.getByText("Upload: u1")).toBeInTheDocument();
   });
 
-  it("shows 'All pending reviews' subtitle without upload_id", () => {
+  it("shows 'Compliance Review' subtitle without upload_id", () => {
     renderPage();
-    expect(screen.getByText("All pending reviews")).toBeInTheDocument();
+    expect(screen.getByText("Compliance Review")).toBeInTheDocument();
   });
 
   it("shows completed state when no SARs returned", async () => {
@@ -301,7 +301,7 @@ describe("CompliancePage", () => {
     mockGet.mockResolvedValue(mockResponse);
     renderPage("/compliance?customer_id=CUST001");
     await waitFor(() => {
-      expect(screen.getByText("All pending reviews")).toBeInTheDocument();
+      expect(screen.getByText("Compliance Review")).toBeInTheDocument();
     });
     expect(screen.getAllByText("John Doe").length).toBeGreaterThanOrEqual(1);
     const chipButton = screen.getByText("\u00D7");
@@ -312,7 +312,7 @@ describe("CompliancePage", () => {
     mockGet.mockResolvedValueOnce(mockResponse).mockResolvedValueOnce({ ...mockResponse, items: [], total: 0 });
     renderPage("/compliance?customer_id=CUST001");
     await waitFor(() => {
-      expect(screen.getByText("All pending reviews")).toBeInTheDocument();
+      expect(screen.getByText("Compliance Review")).toBeInTheDocument();
     });
     fireEvent.click(screen.getByText("\u00D7"));
     await waitFor(() => {

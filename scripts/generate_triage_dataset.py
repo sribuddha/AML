@@ -96,7 +96,14 @@ def _generate_fraud_txn(account_ids: list[str], customer_ids: list[str], date: s
         field = cond.get("field", "")
         operator = cond.get("operator", "==")
         value = cond.get("value", "")
-        txn[field] = _generate_value(field, operator, value)
+        # Rules target country, but CSV uses location column (expanded to city/state/country at upload)
+        if field == "country":
+            loc = _generate_value(field, operator, value)
+            # Map known country names to _LOCATION_MAP keys
+            _COUNTRY_TO_LOC = {"Cayman Islands": "Cayman"}
+            txn["location"] = _COUNTRY_TO_LOC.get(loc, loc)
+        else:
+            txn[field] = _generate_value(field, operator, value)
     if "amount" not in txn:
         txn["amount"] = f"{random.uniform(1, 1000):.2f}"
     return txn

@@ -63,6 +63,10 @@ class ValidationDetailItem(BaseModel):
     source_txn_id: str
     status: str
     flag_details: dict[str, str] | None = None
+    risk_level: str | None = None
+    amount: float | None = None
+    counterparty: str | None = None
+    triage_reasoning: str | None = None
 
 
 class ValidationByTransactionResponse(BaseModel):
@@ -278,6 +282,14 @@ class StageMetricsResponse(BaseModel):
     pattern_metrics: list[PatternMetricsResponse] = []
 
 
+class CalibrationBin(BaseModel):
+    bin_index: int
+    bin_label: str
+    count: int = 0
+    avg_confidence: float = 0.0
+    accuracy: float = 0.0
+
+
 class EvalReportResponse(BaseModel):
     upload_id: str
     mode: str = "full"
@@ -288,6 +300,7 @@ class EvalReportResponse(BaseModel):
     pattern_metrics: list[PatternMetricsResponse] = []
     hallucination_results: list[HallucinationResultResponse] = []
     completeness_results: list[CompletenessResultResponse] = []
+    calibration_bins: list[CalibrationBin] = []
     overall_precision: float = 0.0
     overall_recall: float = 0.0
     overall_f1: float = 0.0

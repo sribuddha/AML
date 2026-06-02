@@ -85,6 +85,27 @@ class TestValidationRest:
         assert data["total"] == 2
         assert all(i["status"] == "clean" for i in data["items"])
 
+    def test_get_validation_filtered_by_risk_level(self, client, seeded_validation):
+        uid, _ = seeded_validation
+        resp = client.get(f"/api/uploads/{uid}/validation?risk_level=flagged")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 2
+        for item in data["items"]:
+            assert item["risk_level"] == "flagged"
+
+    def test_get_validation_with_risk_level_returns_enriched_fields(self, client, seeded_validation):
+        uid, _ = seeded_validation
+        resp = client.get(f"/api/uploads/{uid}/validation?status=flagged&risk_level=flagged")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] >= 1
+        item = data["items"][0]
+        assert item["risk_level"] == "flagged"
+        assert "amount" in item
+        assert "counterparty" in item
+        assert "triage_reasoning" in item
+
     def test_get_validation_paginated(self, client, seeded_validation):
         uid, _ = seeded_validation
         resp = client.get(f"/api/uploads/{uid}/validation?status=flagged&page=1&per_page=1")

@@ -8,6 +8,7 @@ import CustomerDetailPage from "./pages/CustomerDetailPage"
 import CompliancePage from "./pages/CompliancePage"
 import OperationsPage from "./pages/OperationsPage"
 import RulesPage from "./pages/RulesPage"
+import SettingsPage from "./pages/SettingsPage"
 import TestPage from "./pages/TestPage"
 import NotFoundPage from "./pages/NotFoundPage"
 
@@ -24,6 +25,7 @@ export default function App() {
             <Route path="/compliance" element={<CompliancePage />} />
             <Route path="/operations" element={<OperationsPage />} />
             <Route path="/operations/rules" element={<RulesPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
             <Route path="/test" element={<TestPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -125,6 +125,38 @@ describe("api.download", () => {
   });
 });
 
+describe("auth headers", () => {
+  afterEach(() => {
+    delete import.meta.env.VITE_AML_API_KEY;
+  });
+
+  it("includes Bearer token when VITE_AML_API_KEY is set", async () => {
+    import.meta.env.VITE_AML_API_KEY = "test-secret-789";
+    mockFetch.mockResolvedValue(okResponse({ ok: true }));
+    await api.get("/api/test");
+    expect(mockFetch).toHaveBeenCalledWith("/api/test", expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: "Bearer test-secret-789" }),
+    }));
+  });
+
+  it("does not include auth header when VITE_AML_API_KEY is empty", async () => {
+    import.meta.env.VITE_AML_API_KEY = "";
+    mockFetch.mockResolvedValue(okResponse({ ok: true }));
+    await api.get("/api/test");
+    const callArgs = mockFetch.mock.calls[0];
+    expect(callArgs[1].headers.Authorization).toBeUndefined();
+  });
+
+  it("includes auth header on upload requests", async () => {
+    import.meta.env.VITE_AML_API_KEY = "key-456";
+    mockFetch.mockResolvedValue(okResponse({ upload_id: "u1" }));
+    const file = new File(["a"], "test.csv", { type: "text/csv" });
+    await api.upload("/api/uploads", file);
+    const callArgs = mockFetch.mock.calls[0];
+    expect(callArgs[1].headers?.Authorization).toBe("Bearer key-456");
+  });
+});
+
 describe("ApiError", () => {
   it("throws ApiError on 404", async () => {
     mockFetch.mockResolvedValue(errorResponse(404, "Not found"));

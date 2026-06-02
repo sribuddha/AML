@@ -24,7 +24,9 @@ from src.aml_workflow.llm import (
     _sar_fallback,
     _triage_fallback_batch,
     _sar_fallback_batch,
+    _validate_sar_content,
 )
+from src.bff.config import get_llm_timeout, get_llm_budget
 
 
 class LLMProvider(ABC):
@@ -126,6 +128,7 @@ class OpenAIProvider(LLMProvider):
                         },
                     },
                 },
+                timeout=get_llm_timeout(),
             )
             raw = resp.choices[0].message.content
             data = json.loads(raw)
@@ -168,6 +171,7 @@ class OpenAIProvider(LLMProvider):
                         },
                     },
                 },
+                timeout=get_llm_timeout(),
             )
             raw = resp.choices[0].message.content
             data = json.loads(raw)
@@ -191,9 +195,11 @@ class OpenAIProvider(LLMProvider):
                 model=self._sar_model,
                 temperature=0,
                 messages=[{"role": "user", "content": prompt}],
+                timeout=get_llm_timeout(),
             )
             content = resp.choices[0].message.content or ""
-            return SarResult(content=content, raw_response=content)
+            result = SarResult(content=content, raw_response=content)
+            return _validate_sar_content(result, transaction)
         except APIError as e:
             logger.error("OpenAI SAR generation failed: %s", e)
             return _sar_fallback(transaction, flag_details, triage)
@@ -238,6 +244,7 @@ class OpenAIProvider(LLMProvider):
                         },
                     },
                 },
+                timeout=get_llm_timeout(),
             )
             return _parse_triage_batch_response(resp.choices[0].message.content, transactions)
         except (APIError, json.JSONDecodeError, KeyError, ValueError) as e:
@@ -284,6 +291,7 @@ class OpenAIProvider(LLMProvider):
                         },
                     },
                 },
+                timeout=get_llm_timeout(),
             )
             return _parse_triage_batch_response(resp.choices[0].message.content, transactions)
         except (APIError, json.JSONDecodeError, KeyError, ValueError) as e:
@@ -327,8 +335,10 @@ class OpenAIProvider(LLMProvider):
                         },
                     },
                 },
+                timeout=get_llm_timeout(),
             )
-            return _parse_sar_batch_response(resp.choices[0].message.content, transactions, flag_details_list, triage_list)
+            results = _parse_sar_batch_response(resp.choices[0].message.content, transactions, flag_details_list, triage_list)
+            return [_validate_sar_content(r, t) for r, t in zip(results, transactions)]
         except (APIError, json.JSONDecodeError, KeyError, ValueError) as e:
             logger.error("OpenAI SAR batch failed: %s", e)
             return _sar_fallback_batch(transactions, flag_details_list, triage_list)
@@ -371,6 +381,7 @@ class GeminiProvider(LLMProvider):
                         required=["escalate", "reason", "confidence"],
                     ),
                 ),
+                timeout=get_llm_timeout(),
             )
         except APIError as e:
             logger.error("Gemini triage API call failed: %s", e)
@@ -408,6 +419,7 @@ class GeminiProvider(LLMProvider):
                         required=["escalate", "reason", "confidence"],
                     ),
                 ),
+                timeout=get_llm_timeout(),
             )
         except APIError as e:
             logger.error("Gemini stage3 API call failed: %s", e)
@@ -431,12 +443,14 @@ class GeminiProvider(LLMProvider):
             resp = await self._gemini.aio.models.generate_content(
                 model=self._sar_model,
                 contents=prompt,
+                timeout=get_llm_timeout(),
             )
         except APIError as e:
             logger.error("Gemini SAR API call failed: %s", e)
             return _sar_fallback(transaction, flag_details, triage)
         content = resp.text or ""
-        return SarResult(content=content, raw_response=resp.text)
+        result = SarResult(content=content, raw_response=resp.text)
+        return _validate_sar_content(result, transaction)
 
     async def triage_batch(
         self,
@@ -474,6 +488,7 @@ class GeminiProvider(LLMProvider):
                         required=["decisions"],
                     ),
                 ),
+                timeout=get_llm_timeout(),
             )
             return _parse_triage_batch_response(resp.text, transactions)
         except (APIError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
@@ -516,6 +531,7 @@ class GeminiProvider(LLMProvider):
                         required=["decisions"],
                     ),
                 ),
+                timeout=get_llm_timeout(),
             )
             return _parse_triage_batch_response(resp.text, transactions)
         except (APIError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
@@ -554,8 +570,10 @@ class GeminiProvider(LLMProvider):
                         required=["sars"],
                     ),
                 ),
+                timeout=get_llm_timeout(),
             )
-            return _parse_sar_batch_response(resp.text, transactions, flag_details_list, triage_list)
+            results = _parse_sar_batch_response(resp.text, transactions, flag_details_list, triage_list)
+            return [_validate_sar_content(r, t) for r, t in zip(results, transactions)]
         except (APIError, json.JSONDecodeError, KeyError, ValueError, TypeError) as e:
             logger.error("Gemini SAR batch failed: %s", e)
             return _sar_fallback_batch(transactions, flag_details_list, triage_list)

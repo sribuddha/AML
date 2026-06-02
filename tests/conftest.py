@@ -180,6 +180,10 @@ async def app(engine):
     app.include_router(audit_router)
     from src.aml_workflow.rest.validation import router as validation_router
     app.include_router(validation_router)
+    from src.bff.routes.health import router as health_router
+    app.include_router(health_router)
+    from src.bff.auth import APIKeyMiddleware
+    app.add_middleware(APIKeyMiddleware)
 
     async def override_get_db():
         async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as s:

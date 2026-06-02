@@ -102,6 +102,16 @@ def get_chunk_size() -> int:
     _ensure_loaded()
     return int(os.getenv("AML_CHUNK_SIZE", "10000"))
 
+# ── LLM Timeout & Budget ──────────────────────────────────────────
+
+def get_llm_timeout() -> int:
+    _ensure_loaded()
+    return int(os.getenv("AML_LLM_TIMEOUT", "120"))
+
+def get_llm_budget() -> float:
+    _ensure_loaded()
+    return float(os.getenv("AML_LLM_BUDGET", "0"))
+
 # ── Velocity / Structuring Thresholds ─────────────────────────────
 
 def get_velocity_zscore_threshold() -> float:
@@ -111,3 +121,20 @@ def get_velocity_zscore_threshold() -> float:
 def get_structuring_24h_threshold() -> int:
     _ensure_loaded()
     return int(os.getenv("AML_STRUCTURING_24H_THRESHOLD", "3"))
+
+# ── Authentication & CORS ────────────────────────────────────────
+
+def get_api_key() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_API_KEY", "")
+
+def get_cors_origins() -> list[str]:
+    _ensure_loaded()
+    raw = os.getenv("AML_CORS_ORIGINS", "http://localhost:5173,http://localhost:8000")
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+# ── Data Privacy ─────────────────────────────────────────────────
+
+def get_anonymize_llm_data() -> bool:
+    _ensure_loaded()
+    return os.getenv("AML_ANONYMIZE_LLM_DATA", "false").lower() in ("true", "1", "yes")

@@ -44,6 +44,7 @@ async def get_validation_by_date(date: str, db: AsyncSession = Depends(get_db)):
 async def get_validation(
     upload_id: str,
     status: str | None = Query(None),
+    risk_level: str | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
@@ -52,7 +53,7 @@ async def get_validation(
     if upload is None:
         raise HTTPException(status_code=404, detail="Upload not found")
 
-    if status is None:
+    if status is None and risk_level is None:
         result = await db.execute(
             select(
                 func.count().filter(ValidationResult.status == "clean").label("clean_count"),
@@ -70,13 +71,16 @@ async def get_validation(
             total_count=clean + flagged,
         )
 
+    filters = [ValidationResult.upload_id == upload_id]
+    if status is not None:
+        filters.append(ValidationResult.status == status)
+    if risk_level is not None:
+        filters.append(ValidationResult.risk_level == risk_level)
+
     stmt = (
-        select(ValidationResult, Transaction.source_txn_id)
+        select(ValidationResult, Transaction.source_txn_id, Transaction.amount, Transaction.counterparty)
         .join(Transaction, ValidationResult.transaction_id == Transaction.id)
-        .where(
-            ValidationResult.upload_id == upload_id,
-            ValidationResult.status == status,
-        )
+        .where(*filters)
         .order_by(Transaction.source_txn_id)
     )
     count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -88,8 +92,12 @@ async def get_validation(
             source_txn_id=source_txn_id,
             status=vr.status,
             flag_details=vr.flag_details,
+            risk_level=vr.risk_level,
+            amount=amount,
+            counterparty=counterparty,
+            triage_reasoning=vr.triage_reasoning,
         )
-        for vr, source_txn_id in rows
+        for vr, source_txn_id, amount, counterparty in rows
     ]
     return PaginatedResponse(page=page, per_page=per_page, total=total, items=items)
 

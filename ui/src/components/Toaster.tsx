@@ -33,7 +33,8 @@ export default function Toaster() {
   const [items, setItems] = useState<Toast[]>([])
 
   useEffect(() => {
-    return subscribe((toasts) => setItems([...toasts]))
+    const cleanup = subscribe((toasts) => setItems([...toasts]))
+    return () => { cleanup() }
   }, [])
 
   if (items.length === 0) return null

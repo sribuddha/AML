@@ -19,28 +19,42 @@ from src.bff.routes.accounts import router as accounts_router
 from src.bff.routes.compliance import router as compliance_router
 from src.bff.routes.generate import router as generate_router
 from src.bff.routes.operations import router as operations_router
+from src.bff.routes.health import router as health_router
 from src.bff.routes.eval import router as eval_router
+from src.bff.config import get_cors_origins, get_anonymize_llm_data
+from src.bff.auth import APIKeyMiddleware
+from src.bff.logger import logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     alembic_cfg = Config(Path(__file__).parent / "alembic.ini")
     command.upgrade(alembic_cfg, "head")
+    if not get_anonymize_llm_data():
+        logger.warning(
+            "AML_ANONYMIZE_LLM_DATA is not enabled — counterparty names and "
+            "other transaction data will be sent to external LLM providers "
+            "(OpenAI/Gemini) as-is. Set AML_ANONYMIZE_LLM_DATA=true to mask "
+            "counterparty names before sending."
+        )
     yield
 
 
 app = FastAPI(title="AML BFF", lifespan=lifespan)
 
+cors_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(APIKeyMiddleware)
 
 app.include_router(file_processor_router)
 # Order matters: /search (static path) must be registered before /{upload_id} (dynamic param)
 app.include_router(operations_router)
+app.include_router(health_router)
 app.include_router(read_router)
 app.include_router(reprocess_router)
 app.include_router(rules_router)

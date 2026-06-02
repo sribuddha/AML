@@ -261,23 +261,24 @@ class TestBuildTriageBatchItem:
         assert "TXN001" in result
         assert "ACC001" in result
         assert "CUST001" in result
-        assert "15,000" in result
+        assert "15000.0" in result
         assert "Global Trading" in result
         assert "London" in result
         assert "High Value Check" in result
         assert "Offshore Transaction" in result
+        assert "```json" in result
 
     def test_build_item_empty_flags(self):
         result = _build_triage_batch_item(1, _TXN, {})
-        assert "None" in result
+        assert "flagged_rules" in result
 
     def test_build_item_with_enriched_context(self):
         ec = {"customer_txn_count_30d": 5, "customer_sum_30d": 25000.0,
               "customer_avg_30d": 5000.0, "account_type": "checking"}
         result = _build_triage_batch_item(1, _TXN, _FLAG, ec)
-        assert "Customer Enrichment" in result
+        assert "enriched_context" in result
         assert "checking" in result
-        assert "5 txns" in result
+        assert '"customer_txn_count_30d": 5' in result
 
 
 class TestBuildTriageStage3BatchItem:
@@ -287,13 +288,13 @@ class TestBuildTriageStage3BatchItem:
         ]
         result = _build_triage_stage3_batch_item(1, _TXN, _FLAG, recent)
         assert "Transaction 1" in result
-        assert "Recent Transaction History" in result
+        assert "recent_transaction_history" in result
         assert "Local Shop" in result
-        assert "$500" in result
+        assert "500.0" in result
 
     def test_build_item_no_history(self):
         result = _build_triage_stage3_batch_item(1, _TXN, _FLAG, [])
-        assert "No recent transactions found" in result
+        assert "recent_transaction_history" in result
 
 
 class TestBuildBatchMessages:
@@ -563,6 +564,82 @@ class TestGeminiParsingFallback:
         result = await p.triage_stage3(_TXN, _FLAG, [])
         assert isinstance(result, TriageDecision)
         assert result.escalate is True
+
+
+class TestTimeoutParameter:
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_openai_triage_passes_timeout(self, monkeypatch):
+        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 30)
+        p = _make_openai_provider()
+        mock_msg = MagicMock()
+        mock_msg.content = '{"escalate": true, "reason": "R", "confidence": 0.8}'
+        mock_choice = MagicMock()
+        mock_choice.message = mock_msg
+        mock_resp = MagicMock()
+        mock_resp.choices = [mock_choice]
+        p._openai.chat.completions.create = AsyncMock(return_value=mock_resp)
+        await p.triage(_TXN, _FLAG)
+        _, kwargs = p._openai.chat.completions.create.call_args
+        assert kwargs.get("timeout") == 30
+
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_openai_sar_passes_timeout(self, monkeypatch):
+        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 60)
+        p = _make_openai_provider()
+        resp = MagicMock()
+        resp.choices = [MagicMock(message=MagicMock(content="SAR text"))]
+        p._openai.chat.completions.create = AsyncMock(return_value=resp)
+        triage = TriageDecision(escalate=True, reason="R", confidence=0.8)
+        await p.generate_sar(_TXN, _FLAG, triage)
+        _, kwargs = p._openai.chat.completions.create.call_args
+        assert kwargs.get("timeout") == 60
+
+    @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
+    async def test_openai_batch_passes_timeout(self, monkeypatch):
+        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 45)
+        p = _make_openai_provider()
+        batch_resp = json.dumps({"decisions": [{"source_txn_id": "TXN001", "escalate": True, "reason": "R", "confidence": 0.9}]})
+        mock_msg = MagicMock()
+        mock_msg.content = batch_resp
+        mock_choice = MagicMock()
+        mock_choice.message = mock_msg
+        mock_resp = MagicMock()
+        mock_resp.choices = [mock_choice]
+        p._openai.chat.completions.create = AsyncMock(return_value=mock_resp)
+        await p.triage_batch([_TXN], [_FLAG], None, [None])
+        _, kwargs = p._openai.chat.completions.create.call_args
+        assert kwargs.get("timeout") == 45
+
+    async def test_gemini_triage_passes_timeout(self, monkeypatch):
+        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 30)
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = '{"escalate": true, "reason": "R", "confidence": 0.8}'
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+        await p.triage(_TXN, _FLAG)
+        _, kwargs = p._gemini.aio.models.generate_content.call_args
+        assert kwargs.get("timeout") == 30
+
+    async def test_gemini_sar_passes_timeout(self, monkeypatch):
+        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 60)
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = "SAR text"
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+        triage = TriageDecision(escalate=True, reason="R", confidence=0.8)
+        await p.generate_sar(_TXN, _FLAG, triage)
+        _, kwargs = p._gemini.aio.models.generate_content.call_args
+        assert kwargs.get("timeout") == 60
+
+    async def test_gemini_batch_passes_timeout(self, monkeypatch):
+        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 45)
+        p = _make_gemini_provider()
+        mock_resp = MagicMock()
+        mock_resp.text = '{"decisions": [{"source_txn_id": "TXN001", "escalate": True, "reason": "R", "confidence": 0.9}]}'
+        p._gemini.aio.models.generate_content = AsyncMock(return_value=mock_resp)
+        await p.triage_batch([_TXN], [_FLAG], None, [None])
+        _, kwargs = p._gemini.aio.models.generate_content.call_args
+        assert kwargs.get("timeout") == 45
 
 
 class TestInitClient:

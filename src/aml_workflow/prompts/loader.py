@@ -22,25 +22,5 @@ def get_triage_stage3_system() -> str:
     return _TRIAGE_STAGE3_SYSTEM
 
 
-def render_triage_user(
-    source_txn_id: str,
-    account_id: str,
-    customer_id: str,
-    amount: float,
-    counterparty: str,
-    location: str,
-    date: str,
-    rules_flagged: int,
-    rule_evidence: str,
-) -> str:
-    return _TRIAGE_USER.format(
-        source_txn_id=source_txn_id,
-        account_id=account_id,
-        customer_id=customer_id,
-        amount=amount,
-        counterparty=counterparty,
-        location=location,
-        date=date,
-        rules_flagged=rules_flagged,
-        rule_evidence=rule_evidence,
-    )
+def render_triage_user() -> str:
+    return _TRIAGE_USER

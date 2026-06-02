@@ -1,3 +1,5 @@
+export const STORAGE_KEY = "aml_api_key";
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -5,6 +7,29 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.status = status;
   }
+}
+
+export function getApiKey(): string | undefined {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) return stored;
+  return import.meta.env.VITE_AML_API_KEY as string | undefined;
+}
+
+export function setApiKey(key: string): void {
+  if (key) {
+    localStorage.setItem(STORAGE_KEY, key);
+  } else {
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
+export function clearApiKey(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+function authHeaders(): Record<string, string> {
+  const key = getApiKey();
+  return key ? { Authorization: `Bearer ${key}` } : {};
 }
 
 function buildUrl(path: string, params?: Record<string, string | number | undefined | null>): string {
@@ -21,7 +46,7 @@ function buildUrl(path: string, params?: Record<string, string | number | undefi
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
+    headers: { "Content-Type": "application/json", ...authHeaders(), ...options?.headers },
     ...options,
   });
   if (!res.ok) {
@@ -46,7 +71,7 @@ export const api = {
   upload: <T>(path: string, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return fetch(path, { method: "POST", body: form }).then(async (res) => {
+    return fetch(path, { method: "POST", headers: authHeaders(), body: form }).then(async (res) => {
       if (!res.ok) {
         let msg = `HTTP ${res.status}`;
         try { const b = await res.json(); msg = b.detail || msg; } catch {}

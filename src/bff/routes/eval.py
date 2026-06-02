@@ -6,12 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.aml_workflow.eval import _compute_metrics
+from src.aml_workflow.eval.calibration import compute_calibration
 from src.aml_workflow.eval.completeness import check_sar as check_completeness
 from src.aml_workflow.eval.hallucination import check_sar as check_hallucination
 from src.core.models.sar import SAR
 from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
 from src.core.schemas import (
+    CalibrationBin,
     EvalReportResponse,
     PatternMetricsResponse,
     StageMetricsResponse,
@@ -236,6 +238,13 @@ async def evaluate_upload(
             "score": result.score,
         })
 
+    # Confidence calibration
+    txn_by_id = {t.id: t for t in transactions}
+    calibration_data = compute_calibration(sars, txn_by_id, vr_map, expected)
+    calibration_bins = [
+        CalibrationBin(**b) for b in calibration_data
+    ]
+
     # Overall metrics (backward compat)
     total = len(all_pattern_metrics)
     overall_prec = sum(p.precision for p in all_pattern_metrics) / total if total > 0 else 0.0
@@ -259,6 +268,7 @@ async def evaluate_upload(
         pattern_metrics=all_pattern_metrics,
         hallucination_results=hallucination_results,
         completeness_results=completeness_results,
+        calibration_bins=calibration_bins,
         overall_precision=round(overall_prec, 4),
         overall_recall=round(overall_rec, 4),
         overall_f1=round(overall_f1, 4),

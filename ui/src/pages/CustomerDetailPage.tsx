@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { useParams, useNavigate, Link } from "react-router-dom"
-import { api, ApiError } from "../api/client"
+import { api } from "../api/client"
 import { useSarReview } from "../hooks/useSarReview"
 import SarReviewPanel from "../components/SarReviewPanel"
-import type { CustomerDetail, PaginatedResponse, PendingSAR } from "../types"
+import type { CustomerDetail } from "../types"
 
 export default function CustomerDetailPage() {
   const { customerId } = useParams<{ customerId: string }>()

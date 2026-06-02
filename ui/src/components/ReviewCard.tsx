@@ -5,7 +5,7 @@ import StatusBadge from "./StatusBadge";
 
 interface ReviewCardProps {
   sar: PendingSAR;
-  onReview: (action: string) => Promise<void>;
+  onReview: (action: "confirmed" | "dismissed") => Promise<void>;
   reviewing: boolean;
 }
 

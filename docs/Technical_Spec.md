@@ -37,10 +37,11 @@ A single-process AML transaction validation system. Users upload CSV transaction
 - **G-03:** Use LLM triage (OpenAI or Gemini) to reduce false-positive SAR volumes and generate human-readable Suspicious Activity Reports
 - **G-04:** Provide REST API for uploads, validation results, rules CRUD, SAR review, and audit trails
 - **G-05:** Provide an eval harness with synthetic fraud patterns to measure detection metrics, hallucination rates, and SAR completeness
+- **G-06:** Authenticate all API requests via shared API key (`Authorization: Bearer`)
 
 ### Non-Goals
 
-- User authentication / authorization (no login, roles, or API keys)
+- Multi-user authentication / RBAC (no user roles, SSO, or permission system beyond a single shared API key)
 - Multi-user or multi-tenant support
 - Docker / containerization or cloud deployment
 - External message queues (Redis, Celery, SQS)
@@ -898,12 +899,15 @@ None. No internal company packages are consumed.
 
 ## 11. Security Considerations
 
-- **No authentication:** The application has no login, no API keys, no JWT, no bearer tokens, and no role-based access. Every endpoint is fully open. Explicitly deferred to v2.
-- **CORS:** Wildcard CORS (`allow_origins=["*"]`, all methods, all headers, `allow_credentials` explicitly removed since browsers reject `*` + `credentials=true`) — acceptable for local single-user use, but would need tightening for any multi-user or network-exposed deployment.
-- **LLM API keys:** `AML_OPENAI_API_KEY` and `AML_GEMINI_API_KEY` are passed directly to the respective SDKs. They are read from environment variables / `.env` file and never logged.
+- **API key authentication:** All `/api/*` routes require an `Authorization: Bearer <key>` header (configured via `AML_API_KEY` env var). If `AML_API_KEY` is empty, authentication is disabled for local development. See runbook.md for configuration.
+- **CORS:** Restricted to origins in `AML_CORS_ORIGINS` env var (default `http://localhost:5173,http://localhost:8000`). See runbook.md for production hardening.
+- **LLM API keys:** `AML_OPENAI_API_KEY` and `AML_GEMINI_API_KEY` are passed directly to the respective SDKs. They are read from environment variables / `.env` file and never logged. Data sent to third-party LLM APIs includes transaction amounts, counterparty names, and customer IDs. Set `AML_ANONYMIZE_LLM_DATA=true` to mask counterparty names before sending. A startup warning is logged when anonymization is disabled.
 - **SQL injection:** No raw SQL. All queries use SQLAlchemy ORM with parameterized queries.
 - **Input validation:** File extension check (`.csv` only), column presence check, row-level structural validation (required fields, types, FK lookups). No executable content is accepted.
+- **Prompt injection mitigation:** Transaction data is passed to LLM prompts as a structured JSON code block (not prose), and the system prompt explicitly marks it as data (not instructions). See `src/aml_workflow/prompts/` for prompt templates.
+- **Output validation:** LLM-generated SAR narratives are validated for amount hallucination (any `$`-prefixed number exceeding 2× the actual transaction amount is flagged). See `src/aml_workflow/llm.py`.
 - **Data protection:** All data is stored in a single local SQLite file. No encryption at rest. No TLS (local HTTP only).
+- **Pre-commit secret scanning:** A `scripts/scan_for_secrets.py` hook runs on every `git commit` (via `.pre-commit-config.yaml`) to detect staged API keys (OpenAI, Gemini, AWS) and private key material before they reach the repository.
 - **Audit trail:** Every write to validation_result, every workflow step, and every SAR review is logged to the immutable `audit_log` table with actor, timestamp, and payload — providing non-repudiation.
 
 ---
@@ -989,7 +993,7 @@ The following are explicitly out of scope for the initial build and deferred to 
 - **`content_hash` dedup** — detecting and rejecting duplicate file uploads via SHA256 content hash
 - **Transformers / LLM-based validation** — using ML models for anomaly detection or natural language rule parsing
 - **External message queues** — Redis, Celery, SQS, or any async broker (BackgroundTasks suffice for single-process)
-- **User authentication / authorization** — no login, roles, or API keys
+- **Multi-user authentication / RBAC** — no user roles, SSO, or permission system beyond a single shared API key
 - **Audit logging / data retention policies** — no structured audit trail or automated data purging
 - **Docker / containerization** — no Dockerfile, docker-compose, or cloud deployment config
 - **CI/CD pipeline** — no GitHub Actions, pre-commit hooks, or automated deployment

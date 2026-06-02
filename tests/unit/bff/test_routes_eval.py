@@ -256,6 +256,20 @@ class TestEvalEndpoint:
         resp = client.post(f"/api/uploads/{uid}/eval")
         assert resp.status_code == 200
 
+    def test_eval_returns_calibration_bins(self, client, seeded_eval_data):
+        uid, _, _ = seeded_eval_data
+        resp = client.post(f"/api/uploads/{uid}/eval")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "calibration_bins" in data
+        assert len(data["calibration_bins"]) == 10
+        for bin_ in data["calibration_bins"]:
+            assert "bin_index" in bin_
+            assert "bin_label" in bin_
+            assert "count" in bin_
+            assert "avg_confidence" in bin_
+            assert "accuracy" in bin_
+
     def test_eval_skip_sar_missing_txn(self, client, seeded_session, tmp_path):
         now = datetime.now(UTC).isoformat()
         uid = str(uuid.uuid4())

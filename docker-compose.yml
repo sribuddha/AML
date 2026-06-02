@@ -1,4 +1,30 @@
 services:
+  app:
+    build: .
+    container_name: aml-app
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - app-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    container_name: aml-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      app:
+        condition: service_healthy
+
   langfuse-postgres:
     image: postgres:16
     container_name: langfuse-postgres
@@ -124,6 +150,7 @@ services:
       <<: *langfuse-env
 
 volumes:
+  app-data:
   langfuse-pgdata:
   langfuse-clickhouse-data:
   langfuse-minio-data:

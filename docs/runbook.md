@@ -25,6 +25,11 @@ cp .env.template .env
 | `AML_LLM_MODEL_TRIAGE` | `gpt-4o-mini` | Model for triage nodes (stage2 + stage3) |
 | `AML_LLM_MODEL_SAR` | `gpt-4o` | Model for SAR node |
 | `AML_CHUNK_SIZE` | `10000` | Max rows per chunk during upload processing (lazy: `get_chunk_size()`) |
+| `AML_API_KEY` | `""` | API key for `Authorization: Bearer` authentication. All `/api/*` routes require this. Empty = no auth (dev mode). |
+| `AML_CORS_ORIGINS` | `http://localhost:5173,http://localhost:8000` | Comma-separated allowed CORS origins. Set to `*` for wide open (not recommended in production). |
+| `AML_ANONYMIZE_LLM_DATA` | `false` | When `true`, counterparty names are masked before sending to LLM APIs. |
+| `AML_LLM_TIMEOUT` | `120` | Per-call LLM timeout in seconds (lazy: `get_llm_timeout()`) |
+| `AML_LLM_BUDGET` | `0` | Max LLM spend per upload in USD. `0` = unlimited. (lazy: `get_llm_budget()`) |
 
 Values in `.env` take precedence over defaults but can still be overridden by shell environment variables.
 
@@ -181,6 +186,127 @@ uvicorn src.bff.app:app --reload
 ```
 
 Server runs on `http://127.0.0.1:8000`. Auto-runs pending Alembic migrations on startup.
+
+## Production Deployment
+
+The app can be deployed via Docker Compose with nginx as the entry point.
+
+### Prerequisites
+
+- Docker + Docker Compose
+- `.env` file configured with API keys (copy from `.env.template`)
+- LLM API keys for at least one provider (OpenAI or Gemini)
+
+### Quick Start
+
+```bash
+# Build images and start all services
+docker compose build
+docker compose up -d
+
+# Check health
+curl http://localhost/api/health
+
+# Open app at http://localhost
+```
+
+### Services
+
+| Service | Container | Port | Description |
+|---------|-----------|------|-------------|
+| `app` | `aml-app` | 8000 | FastAPI backend (Alembic migrations, SPA serving) |
+| `nginx` | `aml-nginx` | 80 | Reverse proxy + static frontend serving |
+| (Langfuse stack) | — | 3000 | Observability (optional, requires config) |
+
+### Architecture
+
+```
+Browser → nginx:80 → /api/* → app:8000 (FastAPI)
+                  → /*      → nginx serves frontend (SPA)
+                  → /api/health → app:8000 (bypasses API key auth)
+```
+
+- **nginx** handles SSL termination (add your certs to enable HTTPS), rate limiting, and static file caching
+- **Backend** runs Alembic migrations on startup, serves the SPA at `/` for non-API routes when `ui/dist` is present (already mounted in the Docker image)
+- **Health endpoint** at `/api/health` returns `{"status":"ok","version":"0.1.0","db":"connected|disconnected"}` and bypasses `Authorization: Bearer` middleware
+
+### Environment Variables
+
+Same as development (see [Configuration](#configuration)). Key production considerations:
+
+| Variable | Production Note |
+|----------|-----------------|
+| `AML_API_KEY` | **Must** be set in production — auth is bypassed when empty |
+| `AML_CORS_ORIGINS` | Set to your domain, never `*` with credentials |
+| `AML_DATABASE_URL` | SQLite default — for production load, migrate to PostgreSQL (see Note below) |
+| `AML_LLM_TIMEOUT` | Default 120s — lower if you prefer faster fallbacks |
+| `AML_LLM_BUDGET` | Set a USD cap per upload to control costs |
+| `AML_ANONYMIZE_LLM_DATA` | `true` recommended for production to mask counterparty names |
+
+### API Key Management (UI)
+
+The Settings page (`/settings`) allows entering the `AML_API_KEY` at runtime. On first load, the app calls `/api/sar` — if it gets a 401, the UI shows a locked state (only Settings + API Docs nav) with a prompt to enter the key. The key is validated against the backend before being saved to `localStorage`.
+
+This means:
+- **Development**: No `VITE_AML_API_KEY` build-time env var needed — enter the key once in Settings
+- **Docker/production**: Set `AML_API_KEY` in `.env`; first-time users enter it via Settings page
+- **Key change**: Navigate to Settings, enter the new key, Save — old key is replaced
+
+### SSL / HTTPS
+
+The nginx config listens on port 80 and is ready for SSL. To enable HTTPS:
+
+1. Place your certificate files at e.g. `./certs/fullchain.pem` and `./certs/privkey.pem`
+2. Mount them in the nginx service:
+```yaml
+volumes:
+  - ./certs:/etc/nginx/certs:ro
+```
+3. Update `nginx.conf` to listen on 443 and proxy_pass to the backend:
+```nginx
+server {
+    listen 443 ssl;
+    server_name your-domain.com;
+    ssl_certificate /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ...
+}
+```
+
+### Data Persistence
+
+App data (SQLite databases, uploads) is stored in a named Docker volume `app-data` mounted at `/app/data`. This survives container restarts and rebuilds:
+
+```bash
+# Inspect volume
+docker volume inspect aml_app-data
+
+# Backup
+docker run --rm -v app-data:/data -v .:/backup alpine tar czf /backup/app-data-$(date +%Y%m%d).tar.gz -C /data .
+```
+
+### Production Note: SQLite
+
+The current default database is SQLite (`data/aml.db`), which is adequate for single-instance deployments with moderate throughput. For higher concurrency or HA, migrate to PostgreSQL by:
+
+1. Adding a `postgres` service to `docker-compose.yml`
+2. Setting `AML_DATABASE_URL=postgresql+asyncpg://user:pass@postgres:5432/aml`
+3. Adding `asyncpg` to `pyproject.toml` dependencies
+
+This is deferred to a future phase — SQLite is sufficient for the current workload profile.
+
+### Viewing Logs
+
+```bash
+# Backend logs
+docker compose logs -f app
+
+# Nginx logs
+docker compose logs -f nginx
+
+# All services
+docker compose logs -f
+```
 
 ## Run Tests
 
@@ -340,3 +466,49 @@ asyncio.run(main())
 Remove-Item .coverage -Force
 Get-ChildItem -Recurse -Filter "*,cover" | Remove-Item -Force
 ```
+
+## Pre-commit Hooks
+
+The project uses `pre-commit` to run secret scanning and code quality checks on every commit.
+
+### Setup (one-time)
+
+```bash
+# Install pre-commit if not already installed
+uv sync  # or: pip install pre-commit
+
+# Install git hooks
+pre-commit install
+```
+
+### What runs on commit
+
+| Hook | Purpose |
+|------|---------|
+| `detect-private-key` | Flags staged PEM private keys (built-in) |
+| `mixed-line-ending` | Normalizes line endings to LF |
+| `end-of-file-fixer` | Ensures files end with a newline |
+| `scan-for-secrets` | Scans for OpenAI keys (`sk-...`), Gemini keys (`AIza...`), AWS keys, and generic secret assignments |
+
+### Manual scan
+
+```bash
+# Check all files in the repo (not just staged)
+python scripts/scan_for_secrets.py
+```
+
+## Key Rotation
+
+API keys are stored in `.env` (gitignored). To rotate a key:
+
+1. **Generate a new key** via the provider's console (OpenAI, Google AI Studio, etc.)
+2. **Update `.env`** with the new key value
+3. **Restart the server** (`Ctrl+C` + `uvicorn src.bff.app:app --reload`)
+4. **If the old key was ever committed**, rotate it immediately at the provider and revoke the exposed key — the pre-commit hook prevents this but manual mistakes happen.
+5. **Optional:** Delete old key references from shell history (`Get-Content (Get-PSReadlineOption).HistorySavePath` on Windows, `history -c` on Linux).
+
+| Key | Location | Rotation Trigger |
+|-----|----------|-----------------|
+| `AML_OPENAI_API_KEY` | `.env` | Every 90 days or on suspected exposure |
+| `AML_GEMINI_API_KEY` | `.env` | Every 90 days or on suspected exposure |
+| `AML_API_KEY` | `.env` | On suspected exposure |

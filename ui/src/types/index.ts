@@ -167,6 +167,16 @@ export interface CompletenessResult {
   score: number;
 }
 
+export interface AutoReviewedItem {
+  source_txn_id: string;
+  status: string;
+  flag_details: Record<string, string> | null;
+  risk_level: string | null;
+  amount: number | null;
+  counterparty: string | null;
+  triage_reasoning: string | null;
+}
+
 export interface EvalReport {
   upload_id: string;
   total_transactions: number;

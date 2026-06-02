@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import Layout from "./Layout";
 
 vi.mock("../api/client", () => ({
@@ -15,6 +15,9 @@ vi.mock("../api/client", () => ({
       this.status = status;
     }
   },
+  setApiKey: vi.fn(),
+  clearApiKey: vi.fn(),
+  STORAGE_KEY: "aml_api_key",
 }));
 
 function renderLayout(initialPath = "/") {
@@ -59,6 +62,11 @@ describe("Layout", () => {
   it("shows Test Data Generator nav item", () => {
     renderLayout();
     expect(screen.getByText("Test Data Generator")).toBeInTheDocument();
+  });
+
+  it("shows Settings nav item", () => {
+    renderLayout();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
   it("shows pending SAR badge when count > 0", async () => {
@@ -121,5 +129,34 @@ describe("Layout", () => {
     renderLayout();
     await new Promise(r => setTimeout(r, 50));
     expect(screen.queryByText("0")).not.toBeInTheDocument();
+  });
+
+  describe("locked state (API key required)", () => {
+    it("shows locked view when API returns 401", async () => {
+      (api.get as ReturnType<typeof vi.fn>).mockRejectedValue(new ApiError(401, "Unauthorized"));
+      renderLayout();
+      expect(await screen.findByText("🔒")).toBeInTheDocument();
+      expect(screen.getByText("API Key Required")).toBeInTheDocument();
+    });
+
+    it("shows only Settings and API Docs in locked nav", async () => {
+      (api.get as ReturnType<typeof vi.fn>).mockRejectedValue(new ApiError(401, "Unauthorized"));
+      renderLayout();
+      expect(await screen.findByText("🔒")).toBeInTheDocument();
+      expect(screen.getByText("Settings")).toBeInTheDocument();
+      expect(screen.getByText("API Docs")).toBeInTheDocument();
+      expect(screen.queryByText("Compliance")).not.toBeInTheDocument();
+      expect(screen.queryByText("Operations")).not.toBeInTheDocument();
+      expect(screen.queryByText("Customers")).not.toBeInTheDocument();
+      expect(screen.queryByText("Transactions")).not.toBeInTheDocument();
+    });
+
+    it("shows Go to Settings link in locked state", async () => {
+      (api.get as ReturnType<typeof vi.fn>).mockRejectedValue(new ApiError(401, "Unauthorized"));
+      renderLayout();
+      const link = await screen.findByText("Go to Settings");
+      expect(link).toBeInTheDocument();
+      expect(link.closest("a")).toHaveAttribute("href", "/settings");
+    });
   });
 });
