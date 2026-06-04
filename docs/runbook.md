@@ -33,6 +33,12 @@ cp .env.template .env
 
 Values in `.env` take precedence over defaults but can still be overridden by shell environment variables.
 
+### LLM Safety Controls
+
+- **Per-call timeout**: `AML_LLM_TIMEOUT` (default 120s) passed to every OpenAI/Gemini SDK call. Timeout exceptions caught by existing API error handlers → rule-based fallback.
+- **Per-upload budget**: `AML_LLM_BUDGET` (default 0 = unlimited). `LLMClient` estimates cost per call via `_estimate_call_cost()` (model-aware pricing). If budget exceeded, LLM calls skipped entirely — rule-based defaults used instead.
+- **Cost estimation**: Uses `_MODEL_PRICING` dict in `llm.py` (covers gpt-4o-mini, gpt-4o, gemini-2.0-flash). Estimates input tokens as chars/3.5, output tokens per call type. Conservative overestimate for safety.
+
 ### Observability (Langfuse)
 
 ```bash

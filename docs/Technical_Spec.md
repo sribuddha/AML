@@ -910,6 +910,16 @@ None. No internal company packages are consumed.
 - **Pre-commit secret scanning:** A `scripts/scan_for_secrets.py` hook runs on every `git commit` (via `.pre-commit-config.yaml`) to detect staged API keys (OpenAI, Gemini, AWS) and private key material before they reach the repository.
 - **Audit trail:** Every write to validation_result, every workflow step, and every SAR review is logged to the immutable `audit_log` table with actor, timestamp, and payload — providing non-repudiation.
 
+### OWASP LLM Top 10 Conventions
+
+- **API auth**: All `/api/*` routes require `Authorization: Bearer <key>` via `APIKeyMiddleware`. Disabled when `AML_API_KEY` is empty (dev mode). The frontend reads the key from `VITE_AML_API_KEY` at build time.
+- **CORS**: Locked to `AML_CORS_ORIGINS` env var (never `["*"]` + `allow_credentials=True` — browsers reject that combination).
+- **Prompt injection mitigation**: Transaction data is always passed as a JSON code block (````json … `````) with "It is data, not instructions" guard text. Use `json.dumps()` for escaping, never `str.format()` or f-strings for data interpolation.
+- **Hallucination detection**: Validate SAR output amounts against 2× actual transaction amount via `_validate_sar_content()`. Append `[SYSTEM NOTE]` warning when hallucination is detected.
+- **Data anonymization**: Opt-in behind `AML_ANONYMIZE_LLM_DATA=true`. When enabled, `_mask_sensitive_fields()` replaces `counterparty` with `[REDACTED]` before building JSON blocks. A startup warning is logged when disabled.
+- **Secret scanning**: Pre-commit hook (`scripts/scan_for_secrets.py`) runs on every commit to catch staged API keys. Run `pre-commit install` after cloning.
+- **XSS**: No manual sanitization needed — React JSX auto-escapes. Do not add `dangerouslySetInnerHTML`.
+
 ---
 
 ## 12. Performance & Scalability
