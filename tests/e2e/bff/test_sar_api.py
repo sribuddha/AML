@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import datetime, UTC
 
@@ -144,3 +145,42 @@ class TestSarAPI:
         assert data["total"] >= 1
         for item in data["items"]:
             assert item["status"] == "pending_review"
+
+    async def test_concurrent_review_same_sar_lost_update_prevented(self, client, seeded_sar_data):
+        _, _, sar = seeded_sar_data
+        async def _review():
+            return await client.patch(
+                f"/api/sar/{sar.id}/review",
+                json={"action": "confirmed", "notes": "review"},
+            )
+        resp_a, resp_b = await asyncio.gather(_review(), _review())
+        statuses = sorted([resp_a.status_code, resp_b.status_code])
+        assert statuses == [200, 400], (
+            f"Expected one 200 and one 400, got {statuses}"
+        )
+
+    async def test_batch_review_skips_already_reviewed_sar(self, client, seeded_sar_data):
+        _, _, sar = seeded_sar_data
+        resp = await client.patch(
+            f"/api/sar/{sar.id}/review",
+            json={"action": "confirmed"},
+        )
+        assert resp.status_code == 200
+
+        resp = await client.post("/api/sar/batch-review", json={
+            "sar_ids": [sar.id],
+            "action": "confirmed",
+        })
+        assert resp.status_code == 404
+
+    async def test_batch_review_skips_nonexistent_silently(self, client, seeded_sar_data):
+        _, _, sar = seeded_sar_data
+        fake_id = str(uuid.uuid4())
+        resp = await client.post("/api/sar/batch-review", json={
+            "sar_ids": [sar.id, fake_id],
+            "action": "confirmed",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["reviewed"] == 1
+        assert data["conflicts"] == []

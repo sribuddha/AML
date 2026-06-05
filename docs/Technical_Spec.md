@@ -145,6 +145,8 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 │               asyncio.create_task(run_validation(upload_id))      │
 └──────────────────────────────────────┼────────────────────────────┘
                                         │
+![Workflow graph](workflow_graph.png)
+
 ┌──────────────────────────────────────▼────────────────────────────┐
 │              AML_Workflow (LangGraph StateGraph)                   │
 │                                                                    │

@@ -1,5 +1,3 @@
-import logging
-
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from sqlalchemy.ext.asyncio import AsyncSession
 

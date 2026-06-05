@@ -25,3 +25,4 @@ data
 .env.local
 work
 Technical_Spec_template.md
+./opencode/

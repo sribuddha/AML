@@ -67,9 +67,9 @@ Synthetic fraud generators for 5 patterns (structuring, velocity, impossible tra
 
 ## Testing Philosophy
 
-- **551 Python tests (97% coverage)**: rules, enrichment, LLM fallbacks, file processor edge cases, workflow routing, API endpoints
-- **302 Vitest tests (97% coverage)**: React component behavior
-- **7 Playwright E2E specs**: critical upload to review to completion path
+- **500+ Python tests (>95% coverage)**: rules, enrichment, LLM fallbacks, file processor edge cases, workflow routing, API endpoints
+- **300+ Vitest tests (>95% coverage)**: React component behavior
+- **Playwright E2E specs**: critical upload to review to completion path
 - **Detection Quality Pipeline**: validates the system actually catches bad actors, not just that code paths execute
 
 ---

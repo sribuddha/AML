@@ -493,10 +493,11 @@ class LLMClient:
 
         if self.provider == "gemini" and gemini_key:
             from google import genai
+            from src.core.observability import wrap_gemini_client
             return GeminiProvider(
                 model_triage=self.triage_model,
                 model_sar=self.sar_model,
-                gemini_client=genai.Client(api_key=gemini_key),
+                gemini_client=wrap_gemini_client(genai.Client(api_key=gemini_key)),
             )
 
         logger.warning(

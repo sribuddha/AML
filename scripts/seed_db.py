@@ -9,13 +9,6 @@ from sqlalchemy.exc import SQLAlchemyError
 from src.core.models.rule import Rule
 from src.core.models.customer import Customer
 from src.core.models.account import Account
-from src.core.models.transaction import Transaction
-from src.core.models.uploaded_files import UploadedFiles
-from src.core.models.validation_result import ValidationResult
-from src.core.models.sar import SAR
-from src.core.models.enrichment_snapshot import EnrichmentSnapshot
-from src.aml_workflow.models import UploadStatus, TransactionStatus
-from src.file_processor.models import RejectedRecord
 from src.bff.database import Base, async_session_factory
 
 fake = Faker()

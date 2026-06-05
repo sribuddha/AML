@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import Float, ForeignKey, String
+from sqlalchemy import Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.core.base import Base
@@ -18,6 +18,7 @@ class SAR(Base):
     llm_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     triage_reasoning: Mapped[str | None] = mapped_column(String, nullable=True)
     triage_stage: Mapped[str | None] = mapped_column(String, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1", default=1)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending_review")
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)

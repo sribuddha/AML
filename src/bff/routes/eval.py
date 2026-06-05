@@ -23,7 +23,6 @@ from src.core.models.uploaded_files import UploadedFiles
 
 router = APIRouter()
 
-_STAGE_INFERRED: dict[str, str] = {}
 
 
 def _infer_stage(entry: dict) -> str:

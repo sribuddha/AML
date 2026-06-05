@@ -39,14 +39,4 @@ def compute_velocity_zscore(
     return (this_week_count - avg_weekly) / max(std_weekly, 1.0)
 
 
-def compute_structuring_24h_count(
-    txns: list[dict[str, Any]],
-    ref_date: datetime,
-) -> int:
-    """Count transactions in [$9K, $10K] within past 24 hours."""
-    one_day_ago = ref_date - timedelta(days=1)
-    return sum(
-        1 for t in txns
-        if t.get("date") and datetime.fromisoformat(t["date"]) >= one_day_ago
-        and t.get("amount") is not None and 9000 <= t["amount"] <= 10000
-    )
+

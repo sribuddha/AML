@@ -219,10 +219,3 @@ def sample_csv_path(tmp_path: Path) -> Path:
     path.write_text(content)
     return path
 
-
-@pytest.fixture
-def empty_csv_path(tmp_path: Path) -> Path:
-    content = "account_id,customer_id,amount,counterparty,location,date,source_txn_id\n"
-    path = tmp_path / "empty.csv"
-    path.write_text(content)
-    return path

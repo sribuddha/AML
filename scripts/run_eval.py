@@ -8,8 +8,6 @@ Usage:
 import argparse
 import asyncio
 import json
-import uuid
-from datetime import datetime, UTC
 from pathlib import Path
 
 from sqlalchemy import select

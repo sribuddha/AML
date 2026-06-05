@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
 
 from src.bff.database import async_session_factory
 from src.core.models.transaction import Transaction
