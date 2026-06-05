@@ -18,7 +18,7 @@ A single-process AML transaction validation system. Users upload CSV transaction
 
 **3. Enrichment** — For each customer with flagged transactions, the system computes customer-level context: 30-day stats (count, sum, avg, std dev), structuring alerts (txns in [$9K, $10K] within 24h), velocity z-score (this-week vs prior 4 weeks), dormancy (days since last transaction), and account profile (type, age). This context is frozen to the `enrichment_snapshot` table for eval audit and passed in-memory to the next stage via workflow state.
 
-**4. LLM Triage (Stage 2)** — A Large Language Model (OpenAI or Gemini) reviews each flagged transaction along with the enriched context and rule evidence, and decides to either clear it (`escalate: false`) or escalate it (`escalate: true, reason, confidence`). The LLM must meet a confidence threshold baked into the prompt instructions.
+**4. LLM Triage (Stage 2)** — A Large Language Model (OpenAI or Gemini) reviews each flagged transaction along with the enriched context and rule evidence, and decides to either clear it (`escalate: false`) or escalate it (`escalate: true, reason, confidence`). Range-based confidence guidance is baked into the prompt (0.8-1.0 strong, 0.5-0.7 moderate, 0.2-0.4 weak, 0.0-0.1 clear), with escalation driven by rule severity and pattern triggers rather than a hard confidence cutoff.
 
 **5. LLM Deep-Dive (Stage 3)** — If escalated, a second LLM pass reviews the transaction alongside its recent transaction history (same customer, last ~20 txns) and makes a final escalation decision. This catches cases where stage 2's aggregate stats miss recurring patterns (e.g. a $45K payment looks anomalous against a $8K average, but the history shows it's a normal weekly payment).
 
@@ -69,7 +69,7 @@ Financial institutions must file Suspicious Activity Reports (SARs) for transact
 | FR-003 | Apply deterministic rules (JSON conditions: `>`, `<`, `>=`, `<=`, `==`, `!=`, `is_empty`, `contains`, `in`) to flag suspicious transactions | High |
 | FR-004 | Route flagged transactions through LLM triage (OpenAI or Gemini) to decide escalation | Medium |
 | FR-005 | Generate SAR narratives for escalated transactions (LLM-generated or placeholder) | Medium |
-| FR-006 | Support workflow modes: `stage1` (no LLM, all flagged → escalated), `stage2` (LLM triage with aggregate context, confidence threshold in prompt), `stage3` (LLM deep-dive with customer history, confidence threshold in prompt), `full` (stage2 + LLM SAR generation) | Medium |
+| FR-006 | Support workflow modes: `stage1` (no LLM, all flagged → escalated), `stage2` (LLM triage with aggregate context, confidence ranges in prompt), `stage3` (LLM deep-dive with customer history, confidence threshold in prompt), `full` (stage2 + LLM SAR generation) | Medium |
 | FR-007 | CRUD for rules (soft-delete insert-only pattern) | High |
 | FR-008 | Retrieve validation results by upload (summary + paginated flagged details), by date, and by source_txn_id | High |
 | FR-009 | Human review of pending SARs (approve/reject); auto-complete upload when all SARs resolved | Medium |
@@ -117,7 +117,7 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 
 - **UI (React):** File upload, dashboard, rule editor, compliance review, SAR management, test data generator — all implemented (see `docs/UI_Technical_Spec.md`).
 
-- **BFF (FastAPI):** Single backend — file processing (CSV parse, structural validation, accepted/rejected routing), rules CRUD, BFF endpoints for UI consumption, and orchestration of AML_Workflow trigger. 19 REST endpoints under `/api`. Uses `Base` from `src.core.base`, schemas from `src.core.schemas`, and models from `src.core.models`.
+- **BFF (FastAPI):** Single backend — file processing (CSV parse, structural validation, accepted/rejected routing), rules CRUD, BFF endpoints for UI consumption, and orchestration of AML_Workflow trigger. 35 REST endpoints under `/api`. Uses `Base` from `src.core.base`, schemas from `src.core.schemas`, and models from `src.core.models`.
 
 - **AML_Workflow (LangGraph):** Background state machine. Loads un-validated transactions + active deterministic rules → evaluates every (transaction × rule) pair → persists `validation_result` and updates `transaction.status` → optional two-stage LLM triage (stage2: aggregate analysis, stage3: deep-dive with customer history) → SAR creation → human review interrupt → finalize. Every status transition is recorded in `audit_log`.
 
@@ -125,7 +125,7 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 
 - **Core (`src/core/`):** Shared module that breaks the circular dependency between `aml_workflow` and `file_processor`. Contains `base.py` (SQLAlchemy `DeclarativeBase`), `schemas.py` (Pydantic models), `utils.py` (shared helpers), `observability.py` (LangFuse/OpenTelemetry wrapper), and `models/` (8 model files: account, customer, uploaded_files, transaction, sar, validation_result, rule, enrichment_snapshot). Zero dependencies on other `src/` packages.
 
-- **SQLite:** Single-file database — 10 tables (customer, account, uploaded_files, rejected_record, transaction, rule, validation_result, sar, audit_log, enrichment_snapshot).
+- **SQLite:** Single-file database — 12 tables (customer, account, uploaded_files, rejected_record, transaction, rule, validation_result, sar, audit_log, enrichment_snapshot, transaction_status, upload_status).
 
 ### Detailed Flow (Implemented)
 
@@ -305,12 +305,12 @@ Background LangGraph state machine that processes uploaded transactions through 
 - **Model config:** `AML_LLM_MODEL_TRIAGE` (default `"gpt-4o-mini"`) for triage; `AML_LLM_MODEL_SAR` (default `"gpt-4o"`) for SAR generation.
 - **API keys:** `AML_OPENAI_API_KEY` and `AML_GEMINI_API_KEY` — if neither set, all methods fall through to deterministic fallback rules.
 - **Prompt files:** Prompts are stored as standalone `.txt` files in `src/aml_workflow/prompts/`:
-  - `triage_stage2_system.txt` — stage2 aggregate triage (confidence threshold baked into instructions)
+  - `triage_stage2_system.txt` — stage2 aggregate triage with range-based confidence guidance
   - `triage_stage3_system.txt` — stage3 deep-dive triage with customer history (confidence threshold baked into instructions)
   - `triage_user.txt` — shared user prompt template for both stages
   - `triage_system.txt` — legacy (superseded by stage2/stage3 prompts)
 - **Two-stage triage:**
-  - `triage()` — stage2: LLM receives transaction details + rule evidence + optional enriched context. Confidence threshold is instructed in the prompt. Returns `TriageDecision{escalate, reason, confidence}`.
+   - `triage()` — stage2: LLM receives transaction details + rule evidence + optional enriched context. Confidence ranges (0.8-1.0 strong, 0.5-0.7 moderate, 0.2-0.4 weak, 0.0-0.1 clear) guide escalation decisions. Returns `TriageDecision{escalate, reason, confidence}`.
   - `triage_stage3()` — stage3: LLM receives transaction details + rule evidence + recent transaction history for the same customer. Confidence threshold is instructed in the prompt. Returns `TriageDecision{escalate, reason, confidence}`.
 - **Rules context:** Both `triage()` and `triage_stage3()` accept a `rules: list[dict] | None` parameter. When provided, rule names, descriptions, and severity are included in the prompt to ground the LLM's escalation decision in the deterministic rules that triggered.
 - **Enriched context:** `triage()` accepts an optional `enriched_context: dict | None` parameter. When provided, customer-level aggregations (30d stats, structuring alerts, velocity z-score, dormancy, account profile) are appended as an `## Enriched Context` block to the existing user prompt — same pattern as stage3 appends "Recent customer history".
@@ -381,7 +381,7 @@ Without a checkpointer, `interrupt()` still pauses but cannot resume — the gra
 |---------|--------|
 | Compute | Single local process: `uvicorn src.bff.app:app --reload`. Python >= 3.14. |
 | Database | SQLite via `sqlite+aiosqlite` at `<AML_DATA_DIR>/aml.db`. Alembic migrations auto-run on startup via `app.py` lifespan. Each background task creates its own `AsyncSession`. |
-| Orchestration | LangGraph `StateGraph` — 8 nodes: load_data, rule_engine_batch, persist_results, enrich_node, stage2_triage, stage3_triage, sar_node, human_review, finalize. Single-threaded asyncio. Checkpoints to `<DATA_DIR>/checkpoints.db` via `AsyncSqliteSaver` for interrupt/resume. Node retry: 3 attempts, exponential backoff (`2^attempt` s), non-transient → immediate fail. |
+| Orchestration | LangGraph `StateGraph` — 8 nodes: load_data, rule_engine_batch, enrich_node, stage2_triage, stage3_triage, sar_node, human_review, finalize. Single-threaded asyncio. Checkpoints to `<DATA_DIR>/checkpoints.db` via `AsyncSqliteSaver` for interrupt/resume. Node retry: 3 attempts, exponential backoff (`2^attempt` s), non-transient → immediate fail. |
 | Queues | None. Workflow triggered via `asyncio.create_task(run_validation(upload_id))` after upload. No external message brokers. |
 | LLM Providers | OpenAI (`AsyncOpenAI`) and Gemini (`genai.Client`). Provider + model names via env vars (see `.env.template`). No API keys → deterministic fallback. |
 | Caching | None. Every request queries SQLite directly. No Redis or in-memory cache. |

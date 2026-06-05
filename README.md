@@ -2,7 +2,7 @@
 
 An anti-money laundering workflow engine that automates Suspicious Activity Report (SAR) generation from CSV transaction uploads. Combines deterministic rules with optional LLM-based triage, enrichment analytics, and human-in-the-loop review.
 
-![Python](https://img.shields.io/badge/python-3.12-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-009688) ![React](https://img.shields.io/badge/React-19-61DAFB) ![SQLite](https://img.shields.io/badge/SQLite-003B57) ![Docker](https://img.shields.io/badge/Docker-2496ED)
+![Python](https://img.shields.io/badge/python-3.14-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-009688) ![React](https://img.shields.io/badge/React-19-61DAFB) ![SQLite](https://img.shields.io/badge/SQLite-003B57) ![Docker](https://img.shields.io/badge/Docker-2496ED)
 
 ---
 
@@ -67,7 +67,7 @@ Synthetic fraud generators for 5 patterns (structuring, velocity, impossible tra
 
 ## Testing Philosophy
 
-- **551 Python tests (98% coverage)**: rules, enrichment, LLM fallbacks, file processor edge cases, workflow routing, API endpoints
+- **551 Python tests (97% coverage)**: rules, enrichment, LLM fallbacks, file processor edge cases, workflow routing, API endpoints
 - **302 Vitest tests (97% coverage)**: React component behavior
 - **7 Playwright E2E specs**: critical upload to review to completion path
 - **Detection Quality Pipeline**: validates the system actually catches bad actors, not just that code paths execute
@@ -86,7 +86,7 @@ Synthetic fraud generators for 5 patterns (structuring, velocity, impossible tra
 
 ## Prerequisites
 
-- Python 3.12+
+- Python 3.14+
 - Node.js 18+ (for frontend development)
 - Docker (for containerized deployment)
 

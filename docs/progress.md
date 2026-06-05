@@ -1,5 +1,7 @@
 # Progress — AML App
 
+*Current: 551 Python tests at 97% coverage. Full-stack app: React 19 frontend + FastAPI BFF + LangGraph workflow + SQLite. See milestone history below for details.*
+
 ## Build Status
 
 | Module | Component | Status |
@@ -131,7 +133,7 @@
 - `Transaction.location` → `city`/`state`/`country` (three separate String columns)
 - CSV format unchanged — `service.py` expands `location` at upload via `_LOCATION_MAP`
 - Unknown locations → row rejection (data consistency expected, no silent fallback)
-- `_LOCATION_MAP` in `service.py` with ~25 entries covering all known CSV location values
+- `_LOCATION_MAP` in `service.py` with 30 entries covering all known CSV location values
 - Countries use full names (e.g., `"Cayman Islands"`) — self-documenting in rules
 - Migration `013_location_split.py` — adds city/state/country, backfills from location, drops location column
 - `validator.py` unchanged — rules target flat `country` field

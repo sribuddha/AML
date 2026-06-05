@@ -107,7 +107,7 @@ The graph supports four modes, controlled by `DEFAULT_MODE` in `src/aml_workflow
 | `stage3` | Runs | LLM with enriched context | LLM deep-dive with customer history | LLM-generated | Full pipeline with AI analysis |
 | `full` | Runs | Same as stage3 | Same as stage3 | LLM-generated | Full pipeline (alias for stage3) |
 
-Confidence thresholds are baked into the LLM prompt instructions (e.g. stage2: "only escalate if confidence ≥ 50%", stage3: "only escalate if confidence > 60%"). Tune by editing the `.txt` prompt files in `src/aml_workflow/prompts/`.
+Confidence thresholds are baked into the LLM prompt instructions (stage2: range-based guidance where 0.5+ indicates moderate confidence, stage3: "only escalate if confidence > 60%"). Tune by editing the `.txt` prompt files in `src/aml_workflow/prompts/`.
 
 Enrichment context (30d stats, structuring alerts, velocity z-score, dormancy, account profile) is automatically computed for each customer with flagged transactions and appended as an `## Enriched Context` block to the stage2 user prompt — no configuration needed.
 
