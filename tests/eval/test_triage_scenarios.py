@@ -11,7 +11,7 @@ import pytest
 from sqlalchemy import select
 
 from src.aml_workflow.graph import create_workflow
-from src.aml_workflow.llm import TriageDecision, SarResult
+from src.aml_workflow.types import TriageDecision, SarResult
 from src.core.models.enrichment_snapshot import EnrichmentSnapshot
 from src.core.models.rule import Rule
 from src.core.models.sar import SAR

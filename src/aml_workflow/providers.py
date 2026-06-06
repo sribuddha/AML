@@ -9,9 +9,8 @@ from src.bff.logger import logger
 from google.genai import types
 from google.genai.errors import APIError
 
-from src.aml_workflow.llm import (
-    TriageDecision,
-    SarResult,
+from src.aml_workflow.types import TriageDecision, SarResult
+from src.aml_workflow.prompts.builders import (
     _build_triage_messages,
     _build_triage_stage3_messages,
     _build_sar_prompt,
@@ -20,11 +19,13 @@ from src.aml_workflow.llm import (
     _build_sar_batch_prompt,
     _parse_triage_batch_response,
     _parse_sar_batch_response,
+    _validate_sar_content,
+)
+from src.aml_workflow.fallbacks import (
     _triage_fallback,
     _sar_fallback,
     _triage_fallback_batch,
     _sar_fallback_batch,
-    _validate_sar_content,
 )
 from src.bff.config import get_llm_timeout, get_llm_budget
 
@@ -117,6 +118,7 @@ class OpenAIProvider(LLMProvider):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "triage",
+                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -160,6 +162,7 @@ class OpenAIProvider(LLMProvider):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "triage",
+                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -177,7 +180,7 @@ class OpenAIProvider(LLMProvider):
             data = json.loads(raw)
             return TriageDecision(**data, raw_response=raw)
         except (APIError, json.JSONDecodeError, KeyError) as e:
-            logger.error("OpenAI stage3 triage failed: %s", e)
+            logger.error("OpenAI stage3 failed: %s", e)
             return _triage_fallback(transaction, flag_details, rules)
 
     async def generate_sar(
@@ -223,6 +226,7 @@ class OpenAIProvider(LLMProvider):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "triage_batch",
+                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -270,6 +274,7 @@ class OpenAIProvider(LLMProvider):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "triage_stage3_batch",
+                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {
@@ -316,6 +321,7 @@ class OpenAIProvider(LLMProvider):
                     "type": "json_schema",
                     "json_schema": {
                         "name": "sar_batch",
+                        "strict": True,
                         "schema": {
                             "type": "object",
                             "properties": {

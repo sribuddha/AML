@@ -5,7 +5,8 @@ import pytest
 from sqlalchemy import select
 
 from src.aml_workflow.graph import create_workflow
-from src.aml_workflow.llm import LLMClient, TriageDecision, SarResult
+from src.aml_workflow.llm import LLMClient
+from src.aml_workflow.types import TriageDecision, SarResult
 from src.core.models.rule import Rule
 from src.aml_workflow.models.transaction_status import TransactionStatus
 from src.core.models.validation_result import ValidationResult

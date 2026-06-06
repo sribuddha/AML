@@ -5,10 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from google.genai.errors import APIError
 
-from src.aml_workflow.llm import (
-    LLMClient,
-    TriageDecision,
-    SarResult,
+from src.aml_workflow.llm import LLMClient
+from src.aml_workflow.types import TriageDecision, SarResult
+from src.aml_workflow.prompts.builders import (
     _chunk,
     _build_triage_batch_item,
     _build_triage_stage3_batch_item,
@@ -17,6 +16,8 @@ from src.aml_workflow.llm import (
     _build_sar_batch_prompt,
     _parse_triage_batch_response,
     _parse_sar_batch_response,
+)
+from src.aml_workflow.fallbacks import (
     _triage_fallback_batch,
     _sar_fallback_batch,
 )

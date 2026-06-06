@@ -4,13 +4,16 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from google.genai.errors import APIError
 
-from src.aml_workflow.llm import (
-    LLMClient,
-    TriageDecision,
-    SarResult,
+from src.aml_workflow.llm import LLMClient
+from src.aml_workflow.types import TriageDecision, SarResult
+from src.aml_workflow.fallbacks import (
     _triage_fallback,
     _sar_fallback,
     _build_rule_evidence,
+    _triage_fallback_batch,
+    _sar_fallback_batch,
+)
+from src.aml_workflow.prompts.builders import (
     _build_triage_messages,
     _build_triage_stage3_messages,
     _build_sar_prompt,
@@ -19,8 +22,6 @@ from src.aml_workflow.llm import (
     _build_triage_batch_item,
     _build_triage_stage3_batch_item,
     _mask_sensitive_fields,
-    _triage_fallback_batch,
-    _sar_fallback_batch,
     _validate_sar_content,
 )
 
@@ -246,8 +247,8 @@ class TestAnonymization:
 
     def test_json_block_masks_counterparty(self, monkeypatch):
         monkeypatch.setenv("AML_ANONYMIZE_LLM_DATA", "true")
-        import src.aml_workflow.llm as llm_mod
-        monkeypatch.setattr(llm_mod, "get_anonymize_llm_data", lambda: True)
+        import src.aml_workflow.prompts.builders as builders_mod
+        monkeypatch.setattr(builders_mod, "get_anonymize_llm_data", lambda: True)
         txn = {**_TXN, "counterparty": "HSBC Offshore"}
         block = _build_txn_json_block(txn, _FLAG)
         assert "[REDACTED]" in block
@@ -255,15 +256,15 @@ class TestAnonymization:
 
     def test_json_block_no_mask_when_disabled(self, monkeypatch):
         monkeypatch.setenv("AML_ANONYMIZE_LLM_DATA", "false")
-        import src.aml_workflow.llm as llm_mod
-        monkeypatch.setattr(llm_mod, "get_anonymize_llm_data", lambda: False)
+        import src.aml_workflow.prompts.builders as builders_mod
+        monkeypatch.setattr(builders_mod, "get_anonymize_llm_data", lambda: False)
         txn = {**_TXN, "counterparty": "HSBC Offshore"}
         block = _build_txn_json_block(txn, _FLAG)
         assert "HSBC Offshore" in block
         assert "[REDACTED]" not in block
 
     def test_json_block_with_enriched_context(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.llm.get_anonymize_llm_data", lambda: True)
+        monkeypatch.setattr("src.aml_workflow.prompts.builders.get_anonymize_llm_data", lambda: True)
         txn = {**_TXN, "counterparty": "HSBC Offshore"}
         block = _build_txn_json_block(txn, _FLAG, enriched_context={"account_type": "checking"})
         assert "[REDACTED]" in block
@@ -271,7 +272,7 @@ class TestAnonymization:
         assert "checking" in block
 
     def test_triage_batch_item_masks(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.llm.get_anonymize_llm_data", lambda: True)
+        monkeypatch.setattr("src.aml_workflow.prompts.builders.get_anonymize_llm_data", lambda: True)
         txn = {**_TXN, "counterparty": "HSBC Offshore"}
         item = _build_triage_batch_item(1, txn, _FLAG)
         assert "[REDACTED]" in item
@@ -279,7 +280,7 @@ class TestAnonymization:
         assert "Transaction 1" in item
 
     def test_stage3_batch_item_masks(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.llm.get_anonymize_llm_data", lambda: True)
+        monkeypatch.setattr("src.aml_workflow.prompts.builders.get_anonymize_llm_data", lambda: True)
         txn = {**_TXN, "counterparty": "HSBC Offshore"}
         recent = [{"counterparty": "Acme Corp", "amount": 500}]
         item = _build_triage_stage3_batch_item(1, txn, _FLAG, recent)
