@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import Toaster from "./Toaster";
 import type { PaginatedResponse } from "../types";
@@ -37,7 +37,7 @@ export default function Layout() {
   const [opsExpanded, setOpsExpanded] = useState(true);
   const location = useLocation();
 
-  useEffect(() => {
+  const fetchPendingCount = useCallback(() => {
     api.get<PaginatedResponse<unknown>>("/api/sar", { status: "pending_review", per_page: 1 })
       .then((data) => {
         setPendingCount(data.total);
@@ -50,7 +50,20 @@ export default function Layout() {
           setApiKeyRequired(false);
         }
       });
-  }, [location.pathname]);
+  }, []);
+
+  useEffect(() => {
+    fetchPendingCount();
+  }, [location.pathname, fetchPendingCount]);
+
+  useEffect(() => {
+    const interval = setInterval(fetchPendingCount, 30_000);
+    window.addEventListener("sar-reviewed", fetchPendingCount);
+    return () => {
+      window.removeEventListener("sar-reviewed", fetchPendingCount);
+      clearInterval(interval);
+    };
+  }, [fetchPendingCount]);
 
   const isLocked = apiKeyRequired === true;
   const inSettings = location.pathname === "/settings";

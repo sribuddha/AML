@@ -37,7 +37,7 @@ class TestUploadRest:
         assert resp.status_code == 422
 
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_valid_csv(self, mock_task, mock_process, client, sample_csv_path):
         mock_process.return_value = {
             "upload_id": str(uuid.uuid4()),
@@ -57,7 +57,7 @@ class TestUploadRest:
         assert "Only CSV files" in resp.json()["detail"]
 
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_from_work(self, mock_task, mock_process, client, seeded_session, tmp_path):
         mock_process.return_value = {
             "upload_id": str(uuid.uuid4()),
@@ -107,7 +107,7 @@ class TestUploadRest:
 
     @patch("pandas.read_csv", side_effect=pd.errors.ParserError("mock error"))
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_from_work_invalid_csv(self, mock_task, mock_process, mock_read, client, seeded_session):
         mock_process.return_value = {"upload_id": str(uuid.uuid4()), "accepted": 0, "rejected": 0}
         file_path = WORK_DIR / "bad_work.csv"
@@ -118,7 +118,7 @@ class TestUploadRest:
         assert "Could not parse CSV" in resp.json()["detail"]
 
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_from_work_missing_columns(self, mock_task, mock_process, client, seeded_session):
         mock_process.return_value = {"upload_id": str(uuid.uuid4()), "accepted": 0, "rejected": 0}
         csv_content = _build_csv([{"foo": "1", "bar": "2"}])
@@ -130,7 +130,7 @@ class TestUploadRest:
         assert "Missing required columns" in resp.json()["detail"]
 
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_from_work_with_source_txn_and_eval(self, mock_task, mock_process, client, seeded_session):
         mock_process.return_value = {"upload_id": str(uuid.uuid4()), "accepted": 1, "rejected": 0}
         csv_content = _build_csv([
@@ -148,7 +148,7 @@ class TestUploadRest:
         assert resp.status_code == 200
 
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_from_work_with_manifest(self, mock_task, mock_process, client, seeded_session):
         mock_process.return_value = {"upload_id": str(uuid.uuid4()), "accepted": 1, "rejected": 0}
         csv_content = _build_csv([
@@ -165,7 +165,7 @@ class TestUploadRest:
         assert resp.status_code == 200
 
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_from_work_empty_manifest_falls_back_to_eval(self, mock_task, mock_process, client, seeded_session):
         mock_process.return_value = {"upload_id": str(uuid.uuid4()), "accepted": 1, "rejected": 0}
         csv_content = _build_csv([
@@ -184,7 +184,7 @@ class TestUploadRest:
         assert resp.status_code == 200
 
     @patch("src.file_processor.rest.upload.process_upload")
-    @patch("src.file_processor.rest.upload.asyncio.create_task")
+    @patch("src.file_processor.rest.upload.start_workflow_job")
     def test_upload_from_work_bad_manifest_falls_back(self, mock_task, mock_process, client, seeded_session):
         mock_process.return_value = {"upload_id": str(uuid.uuid4()), "accepted": 1, "rejected": 0}
         csv_content = _build_csv([

@@ -66,11 +66,23 @@ export default function OperationsPage() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const fetchUploadsRef = useRef(fetchUploads);
+  fetchUploadsRef.current = fetchUploads;
+  const pageRef = useRef(page);
+  pageRef.current = page;
+
+  useEffect(() => {
+    if (activeTab !== "search") return;
+    const interval = setInterval(() => fetchUploadsRef.current(pageRef.current), 30_000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
+
   const handleUpload = async (file: File) => {
     try {
       const result = await api.upload<{ total_rows: number; accepted_count: number; failed_count: number }>("/api/uploads", file)
       setUploadResult(result)
       toast.success(`Uploaded ${result.accepted_count} rows`)
+      window.dispatchEvent(new CustomEvent("sar-reviewed"))
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Upload failed")
     }

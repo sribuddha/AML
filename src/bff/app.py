@@ -37,6 +37,8 @@ async def lifespan(app: FastAPI):
             "(OpenAI/Gemini) as-is. Set AML_ANONYMIZE_LLM_DATA=true to mask "
             "counterparty names before sending."
         )
+    from src.aml_workflow.services import recover_stuck_jobs
+    await recover_stuck_jobs()
     yield
 
 

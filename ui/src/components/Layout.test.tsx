@@ -131,6 +131,16 @@ describe("Layout", () => {
     expect(screen.queryByText("0")).not.toBeInTheDocument();
   });
 
+  it("re-fetches pending count on sar-reviewed event", async () => {
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValue({ total: 3 });
+    renderLayout();
+    expect(await screen.findByText("3")).toBeInTheDocument();
+
+    (api.get as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ total: 1 });
+    window.dispatchEvent(new CustomEvent("sar-reviewed"));
+    expect(await screen.findByText("1")).toBeInTheDocument();
+  });
+
   describe("locked state (API key required)", () => {
     it("shows locked view when API returns 401", async () => {
       (api.get as ReturnType<typeof vi.fn>).mockRejectedValue(new ApiError(401, "Unauthorized"));

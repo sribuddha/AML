@@ -22,6 +22,7 @@ async def stage2_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
 
         llm_batch: list[tuple[dict, dict, dict, dict | None]] = []
         bypasses: list[tuple[dict, dict]] = []
+        hard_bypasses: list[tuple[dict, dict]] = []
 
         for result in flagged:
             txn_id = result["transaction_id"]
@@ -29,7 +30,9 @@ async def stage2_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
             if txn is None:
                 continue
 
-            if mode == "stage1":
+            if result.get("hard_escalate"):
+                hard_bypasses.append((result, txn))
+            elif mode == "stage1":
                 bypasses.append((result, txn))
             else:
                 flag_details = result.get("flag_details") or {}
@@ -58,6 +61,26 @@ async def stage2_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
                     .where(ValidationResult.transaction_id == result["transaction_id"], ValidationResult.upload_id == state["upload_id"])
                     .values(risk_level=result["risk_level"], triage_reasoning=decision.reason, raw_llm_response=decision.raw_response, updated_at=now)
                 )
+
+        for result, txn in hard_bypasses:
+            from src.aml_workflow.llm import TriageDecision
+            decision = TriageDecision(
+                escalate=True,
+                reason="Hard-escalated — high-risk pattern (structuring 24h threshold exceeded)",
+                confidence=1.0,
+            )
+            result["risk_level"] = "high"
+            result["triage_reasoning"] = decision.reason
+            result["llm_confidence"] = decision.confidence
+            result["triage_stage"] = "stage2"
+
+            await record_transaction_status(db, result["transaction_id"], "escalated")
+
+            await db.execute(
+                sa_update(ValidationResult)
+                .where(ValidationResult.transaction_id == result["transaction_id"], ValidationResult.upload_id == state["upload_id"])
+                .values(risk_level="high", triage_reasoning=decision.reason, raw_llm_response=decision.raw_response, updated_at=now)
+            )
 
         for result, txn in bypasses:
             from src.aml_workflow.llm import TriageDecision

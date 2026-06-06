@@ -8,10 +8,8 @@ from src.aml_workflow.llm import LLMClient
 from src.core.models.uploaded_files import UploadedFiles
 from src.core.observability import setup as setup_observability, get_langgraph_callbacks, shutdown as shutdown_observability
 from src.aml_workflow.services import transition_upload
-from src.bff.config import get_data_dir
+from src.bff.config import get_data_dir, get_workflow_mode
 from src.bff.logger import logger
-
-DEFAULT_MODE = "full"
 
 
 async def _persist_mode(upload_id: str, mode: str, db: AsyncSession) -> None:
@@ -22,7 +20,7 @@ async def _persist_mode(upload_id: str, mode: str, db: AsyncSession) -> None:
 
 
 async def run_validation(upload_id: str, db: AsyncSession, llm: LLMClient | None = None, mode: str | None = None) -> None:
-    effective_mode = mode or DEFAULT_MODE
+    effective_mode = mode or get_workflow_mode()
 
     logger.info("Workflow started for upload %s (mode=%s)", upload_id, effective_mode)
 

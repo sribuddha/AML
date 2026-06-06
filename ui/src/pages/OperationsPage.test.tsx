@@ -138,6 +138,23 @@ describe("OperationsPage", () => {
     });
   });
 
+  it("dispatches sar-reviewed event after successful upload", async () => {
+    mockUpload.mockResolvedValue({ total_rows: 100, accepted_count: 95, failed_count: 5 });
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    renderPage();
+    fireEvent.click(screen.getByText("Upload"));
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(["a"], "test.csv", { type: "text/csv" })] } });
+    fireEvent.click(screen.getByRole("button", { name: /upload test.csv/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Upload Result")).toBeInTheDocument();
+    });
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "sar-reviewed" }),
+    );
+    dispatchSpy.mockRestore();
+  });
+
   it("renders status filter tabs in search view", () => {
     renderPage();
     ["All", "Uploaded", "Processing", "Pending Review", "Complete", "Failed"].forEach(status => {

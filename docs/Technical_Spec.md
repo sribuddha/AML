@@ -8,7 +8,7 @@
 
 ## 1. Overview / Summary
 
-A single-process AML transaction validation system. Users upload CSV transaction files through a FastAPI BFF; the backend parses, validates, and inserts accepted rows, then triggers a LangGraph workflow that applies deterministic rules and optionally uses an LLM (OpenAI or Gemini) for triage and SAR narrative generation. An eval harness measures detection precision/recall, hallucination rates, and rule completeness. No external queues, no auth — designed for local single-user operation.
+A single-process AML transaction validation system. Users upload CSV transaction files through a FastAPI BFF; the backend parses, validates, and inserts accepted rows, then triggers a LangGraph workflow that applies deterministic rules and optionally uses an LLM (OpenAI or Gemini) for triage and SAR narrative generation. An eval harness measures detection precision/recall, hallucination rates, and rule completeness. No external queues — designed for local single-user operation with optional API-key auth.
 
 ### How It Works — End to End
 
@@ -43,7 +43,7 @@ A single-process AML transaction validation system. Users upload CSV transaction
 
 - Multi-user authentication / RBAC (no user roles, SSO, or permission system beyond a single shared API key)
 - Multi-user or multi-tenant support
-- Docker / containerization or cloud deployment
+- Cloud deployment (Docker/containerization is implemented for local use; cloud deployment remains out of scope)
 - External message queues (Redis, Celery, SQS)
 - LLM-based anomaly detection (ML models for transaction scoring)
 - CI/CD pipeline or pre-commit hooks

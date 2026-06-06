@@ -85,7 +85,7 @@ describe("TestPage", () => {
   it("shows bad rows input only for upload type", () => {
     renderPage();
     expect(screen.getByText("bad rows")).toBeInTheDocument();
-    const badRowsInput = screen.getByDisplayValue("50") as HTMLInputElement;
+    const badRowsInput = screen.getByDisplayValue("0") as HTMLInputElement;
     expect(badRowsInput).toBeInTheDocument();
   });
 
@@ -98,7 +98,7 @@ describe("TestPage", () => {
 
   it("updates bad rows input", () => {
     renderPage();
-    const badRowsInput = screen.getByDisplayValue("50") as HTMLInputElement;
+    const badRowsInput = screen.getByDisplayValue("0") as HTMLInputElement;
     fireEvent.change(badRowsInput, { target: { value: "25" } });
     expect(badRowsInput.value).toBe("25");
   });
@@ -119,7 +119,7 @@ describe("TestPage", () => {
   it("shows total rows count", () => {
     renderPage();
     expect(screen.getByText(/Total rows:/)).toBeInTheDocument();
-    expect(screen.getByText("1,000")).toBeInTheDocument();
+    expect(screen.getByText("10")).toBeInTheDocument();
   });
 
   it("disables generate button when 0 rows", () => {
@@ -136,7 +136,7 @@ describe("TestPage", () => {
     fireEvent.click(screen.getByText("Generate"));
     await waitFor(() => {
       expect(mockPost).toHaveBeenCalledWith("/api/generate", expect.objectContaining({
-        steps: [expect.objectContaining({ type: "upload", count: 1000 })],
+        steps: [expect.objectContaining({ type: "upload", count: 10 })],
         shuffle: true,
       }));
     });

@@ -131,12 +131,14 @@ async def _try_insert_rows(
     inserted = 0
     failed = 0
 
+    objs = [Transaction(**r) for r in rows]
     try:
-        objs = [Transaction(**r) for r in rows]
         session.add_all(objs)
         await session.flush()
         inserted = len(rows)
     except SQLAlchemyError:
+        for obj in objs:
+            session.expunge(obj)
         for row in rows:
             try:
                 session.add(Transaction(**row))

@@ -22,10 +22,10 @@ const TYPE_DESCS: Record<GenType, string> = {
 };
 
 const INITIAL_COUNTS: Record<GenType, number> = {
-  upload: 1000,
-  stage1: 200,
-  stage2: 20,
-  synthetic: 500,
+  upload: 10,
+  stage1: 10,
+  stage2: 10,
+  synthetic: 10,
 };
 
 function todayStr() {
@@ -44,7 +44,7 @@ export default function TestPage() {
     synthetic: false,
   });
   const [counts, setCounts] = useState({ ...INITIAL_COUNTS });
-  const [badRows, setBadRows] = useState(50);
+  const [badRows, setBadRows] = useState(0);
   const [shuffle, setShuffle] = useState(true);
   const [date, setDate] = useState(todayStr());
   const [generating, setGenerating] = useState(false);

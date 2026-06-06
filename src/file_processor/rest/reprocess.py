@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, UTC, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -8,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.models.validation_result import ValidationResult
 from src.bff.database import get_db
 from src.core.models.uploaded_files import UploadedFiles
-from src.aml_workflow.services import _set_upload_status, trigger_workflow
+from src.aml_workflow.services import _set_upload_status, start_workflow_job
 
 router = APIRouter()
 
@@ -52,5 +51,5 @@ async def reprocess_upload(upload_id: str, db: AsyncSession = Depends(get_db)):
 
 
 async def _start_reprocess(upload_id: str):
-    asyncio.create_task(trigger_workflow(upload_id))
+    start_workflow_job(upload_id)
     return {"message": "Reprocessing started"}

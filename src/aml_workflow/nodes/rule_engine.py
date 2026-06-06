@@ -113,6 +113,8 @@ async def rule_engine_batch_node(state: WorkflowState, db: AsyncSession, llm: LL
                     r["flag_details"] = {}
                 r["flag_details"].update(new_flags)
                 r["status"] = "flagged"
+                if "structuring_24h" in new_flags:
+                    r["hard_escalate"] = True
 
         flagged_count = sum(1 for r in results if r["status"] == "flagged")
         logger.info("Rule engine: %d flagged, %d clean out of %d",

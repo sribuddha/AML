@@ -98,7 +98,7 @@ python -m scripts.seed_db --force
 
 ## Workflow Modes
 
-The graph supports four modes, controlled by `DEFAULT_MODE` in `src/aml_workflow/triggers.py`:
+The graph supports four modes, controlled by the `AML_WORKFLOW_MODE` env var (default: `full`):
 
 | Mode | Enrichment | Stage2 triage | Stage3 deep-dive | SAR | When to use |
 |------|------------|---------------|------------------|-----|-------------|

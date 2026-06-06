@@ -1,6 +1,6 @@
 # Progress — AML App
 
-*Current: 551 Python tests at 97% coverage. Full-stack app: React 19 frontend + FastAPI BFF + LangGraph workflow + SQLite. See milestone history below for details.*
+*Current: 554 Python tests at 97% coverage. Full-stack app: React 19 frontend + FastAPI BFF + LangGraph workflow + SQLite. See milestone history below for details.*
 
 ## Build Status
 
@@ -356,12 +356,22 @@
 - **`except Exception` narrowed in scripts**: `seed_db.py:74` → `SQLAlchemyError` (uninitialized DB check).
 - **457 tests passing, 0 failures** (pre-existing aiosqlite cleanup warning only).
 
+### Phase 10f — Compliance Badge + Durable Workflow + Hard-Escalation Rules (✅ Done)
+- **SAR badge reactivity**: Added `"sar-reviewed"` CustomEvent dispatch in `OperationsPage.tsx` on review/dismiss/upload; `Layout.tsx` listens + polls every 30s for pending count. Requires rebuilding **nginx** container for frontend changes to take effect.
+- **`source_txn_id` unique constraint fixed**: Changed from global `unique=True` (broke duplicate uploads of same data) to composite `UniqueConstraint("upload_id", "source_txn_id")`. Migration `019_source_txn_id_upload_unique.py` drops old global constraint, creates composite.
+- **Durable workflow jobs**: Created `WorkflowJob` ORM model + `execute_workflow_job()`/`start_workflow_job()`/`recover_stuck_jobs()` in `services.py`. Upload and reprocess endpoints now use `start_workflow_job()` instead of raw `create_task(trigger_workflow(...))`. Startup recovers stuck jobs. Migration `018_workflow_job.py`.
+- **Mode awareness**: `get_workflow_mode()` config accessor replaces hardcoded `DEFAULT_MODE` in `triggers.py` — respects `AML_WORKFLOW_MODE` env var.
+- **Hard-escalation rules**: `rule_engine.py` sets `hard_escalate: true` when `structuring_24h` pattern detected; `stage2_triage_node` in `triage.py` bypasses LLM for these transactions (auto-escalate with `risk_level="high"`, `confidence=1.0`).
+- **`_try_insert_rows` bulk failure fix**: After bulk flush failure, pending objects are expunged from session before individual fallback inserts — avoids unique constraint collisions between old pending and new objects.
+- **`reprocess.py` migration**: Switched from `import asyncio; create_task(trigger_workflow(...))` to `start_workflow_job(upload_id)` for durable execution.
+- **554 tests passing, 0 failures** (up from 551).
+
 ### Phase 10e — Remaining Architectural Fixes (✅ Done)
 - **Fire-and-forget task error logging**: Wrapped both `_trigger_workflow()` closures in `upload.py` with `try/except` + `logger.exception()` — background workflow errors are now logged instead of silently swallowed
 - **`_compute_metrics` parameter clarity**: Renamed `flagged` → `true_positives` in `_compute_metrics(total, true_positives)` to clarify it's a coverage metric (not binary classification); updated docstring to explain precision=1.0 semantics
 
 ### Phase 10b — Iteration 1 Follow-up (✅ Done)
-- **`/api/v1` prefix**: All routers in `app.py` now use `prefix="/api/v1"` — consistent API versioning
+- **`/api` prefix**: All routers use hardcoded `/api/...` paths (no router prefix); API versioning deferred — no `/api/v1` migration yet
 - **Config lazy loading completed**: `llm.py` and `graph.py` fully migrated from module-level constants (`LLM_PROVIDER`, `OPENAI_API_KEY`, `VELOCITY_ZSCORE_THRESHOLD`, etc.) to lazy accessor functions (`get_llm_provider()`, `get_openai_api_key()`, `get_velocity_zscore_threshold()`, etc.)
 - **All bare excepts narrowed**: `service.py` (DB flush → `SQLAlchemyError`), `upload.py` (CSV parse → `(pd.errors.ParserError, ValueError)`), `llm.py` individual Gemini methods (API calls → `Exception` with narrow parse errors separated)
 - **Eval `_compute_metrics` repiped**: Now uses explicit `correctly_flagged` parameter — `tp = correctly_flagged`, `fp = flagged - correctly_flagged`, `fn = total - correctly_flagged`; `PatternMetrics.accuracy` renamed to `recall`
@@ -429,7 +439,7 @@
 ### Test Fixes (✅ Done)
 - `SettingsPage.test.tsx`: Replaced `require("../api/client")` with top-level `import { getApiKey }` — vitest's `vi.mock` doesn't intercept `require()` in ESM
 - `Layout.test.tsx`: Fixed race condition in locked nav test — `findByText("Settings")` resolves during initial render (full nav), but `toBeInTheDocument()` runs after re-render (locked nav). Fixed by waiting for lock state first (`findByText("🔒")`) then checking Settings synchronously
-- **Current totals**: 551 Python tests (97% coverage) + **319 UI tests** (21 files, all passing)
+- **Current totals**: 554 Python tests (97% coverage) + **319 UI tests** (21 files, all passing)
 
 ### Nice to Have / Future (deferred to v2)
 - File content dedup via SHA256

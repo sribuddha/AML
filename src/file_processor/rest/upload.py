@@ -1,4 +1,3 @@
-import asyncio
 import json
 import uuid
 from io import BytesIO
@@ -12,12 +11,10 @@ from src.bff.config import BASE_DIR
 from src.bff.database import get_db
 from src.file_processor.service import REQUIRED_FIELDS, HEADER_ALIASES, process_upload, retry_upload
 from src.bff.logger import logger
-from src.aml_workflow.services import trigger_workflow
+from src.aml_workflow.services import start_workflow_job
 
 WORK_DIR = BASE_DIR / "work"
 router = APIRouter()
-
-_background_tasks: set[asyncio.Task] = set()
 
 
 @router.post("/api/uploads")
@@ -61,9 +58,7 @@ async def upload_file(
 
     result = await process_upload(df, file.filename, upload_id, db, content)
 
-    task = asyncio.create_task(trigger_workflow(upload_id))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    start_workflow_job(upload_id)
 
     return result
 
@@ -144,8 +139,6 @@ async def upload_from_work(
         await db.execute(stmt)
         await db.commit()
 
-    task = asyncio.create_task(trigger_workflow(upload_id))
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    start_workflow_job(upload_id)
 
     return result

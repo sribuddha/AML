@@ -16,6 +16,7 @@ import src.core.models.uploaded_files    # noqa: F401, E402
 import src.core.models.validation_result # noqa: F401, E402
 import src.aml_workflow.models.upload_status    # noqa: F401, E402
 import src.aml_workflow.models.transaction_status  # noqa: F401, E402
+import src.aml_workflow.models.workflow_job    # noqa: F401, E402
 import src.file_processor.models as _fp_models    # noqa: F401, E402
 
 config = context.config

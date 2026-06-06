@@ -102,6 +102,12 @@ def get_chunk_size() -> int:
     _ensure_loaded()
     return int(os.getenv("AML_CHUNK_SIZE", "10000"))
 
+# ── Workflow Mode ─────────────────────────────────────────────────
+
+def get_workflow_mode() -> str:
+    _ensure_loaded()
+    return os.getenv("AML_WORKFLOW_MODE", "full")
+
 # ── LLM Timeout & Budget ──────────────────────────────────────────
 
 def get_llm_timeout() -> int:

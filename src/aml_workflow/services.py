@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.bff.logger import logger
@@ -54,3 +57,58 @@ async def trigger_workflow(upload_id: str) -> None:
             await run_validation(upload_id, workflow_db)
     except Exception:
         logger.exception("Background workflow failed for upload %s", upload_id)
+
+
+_background_tasks: set[asyncio.Task] = set()
+
+
+async def execute_workflow_job(upload_id: str, mode: str | None = None) -> None:
+    """Persist a WorkflowJob, run the workflow, and update job status on completion/failure."""
+    from src.aml_workflow.models.workflow_job import WorkflowJob
+    from src.bff.database import async_session_factory
+
+    async with async_session_factory() as job_db:
+        job = WorkflowJob(upload_id=upload_id, status="running", mode=mode, created_at=now(), updated_at=now())
+        job_db.add(job)
+        await job_db.commit()
+        job_id = job.id
+
+    try:
+        await trigger_workflow(upload_id)
+        async with async_session_factory() as job_db:
+            job = await job_db.get(WorkflowJob, job_id)
+            if job:
+                job.status = "completed"
+                job.updated_at = now()
+                await job_db.commit()
+    except Exception:
+        async with async_session_factory() as job_db:
+            job = await job_db.get(WorkflowJob, job_id)
+            if job:
+                job.status = "failed"
+                job.updated_at = now()
+                await job_db.commit()
+        raise
+
+
+def start_workflow_job(upload_id: str, mode: str | None = None) -> asyncio.Task:
+    """Fire off a durable workflow job in the background with GC protection."""
+    task = asyncio.create_task(execute_workflow_job(upload_id, mode))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
+
+
+async def recover_stuck_jobs() -> None:
+    """On startup, find jobs stuck in running/pending and restart them."""
+    from src.aml_workflow.models.workflow_job import WorkflowJob
+    from src.bff.database import async_session_factory
+
+    async with async_session_factory() as job_db:
+        stuck = await job_db.execute(
+            select(WorkflowJob).where(WorkflowJob.status.in_(["running", "pending"]))
+        )
+        jobs = stuck.scalars().all()
+    for job in jobs:
+        logger.info("Recovering workflow job %s for upload %s (status=%s)", job.id, job.upload_id, job.status)
+        start_workflow_job(job.upload_id, job.mode)
