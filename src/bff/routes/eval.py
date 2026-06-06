@@ -98,6 +98,8 @@ async def evaluate_upload(
     # Group entries by stage
     stage_groups: dict[str, dict[str, dict]] = {}
     for src_id, exp in expected.items():
+        if not exp.get("expected_escalate", True):
+            continue  # skip clean/negative control entries — not detection patterns
         stage = _infer_stage(exp)
         if stage not in stage_groups:
             stage_groups[stage] = {"total": 0, "flagged": 0, "escalated": 0, "auto_reviewed": 0, "patterns": {}}

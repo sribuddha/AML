@@ -65,7 +65,15 @@ export function useSarReview({ uploadId, customerId }: UseSarReviewOptions = {})
     }
   }, [uploadId, customerId])
 
-  useEffect(() => { fetchSars() }, [fetchSars])
+  useEffect(() => {
+    fetchSars()
+    window.addEventListener("sar-reviewed", fetchSars)
+    const interval = setInterval(fetchSars, 30_000)
+    return () => {
+      window.removeEventListener("sar-reviewed", fetchSars)
+      clearInterval(interval)
+    }
+  }, [fetchSars])
 
   const filteredSars = useMemo(
     () => riskLevel === "all" ? sars : sars.filter((s) => s.risk_level === riskLevel),

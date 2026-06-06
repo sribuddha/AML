@@ -570,7 +570,7 @@ class TestGeminiParsingFallback:
 class TestTimeoutParameter:
     @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
     async def test_openai_triage_passes_timeout(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 30)
+        monkeypatch.setattr("src.aml_workflow.providers.openai.get_llm_timeout", lambda: 30)
         p = _make_openai_provider()
         mock_msg = MagicMock()
         mock_msg.content = '{"escalate": true, "reason": "R", "confidence": 0.8}'
@@ -585,7 +585,7 @@ class TestTimeoutParameter:
 
     @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
     async def test_openai_sar_passes_timeout(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 60)
+        monkeypatch.setattr("src.aml_workflow.providers.openai.get_llm_timeout", lambda: 60)
         p = _make_openai_provider()
         resp = MagicMock()
         resp.choices = [MagicMock(message=MagicMock(content="SAR text"))]
@@ -597,7 +597,7 @@ class TestTimeoutParameter:
 
     @patch.dict("sys.modules", {"openai": _MOCK_OPENAI})
     async def test_openai_batch_passes_timeout(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 45)
+        monkeypatch.setattr("src.aml_workflow.providers.openai.get_llm_timeout", lambda: 45)
         p = _make_openai_provider()
         batch_resp = json.dumps({"decisions": [{"source_txn_id": "TXN001", "escalate": True, "reason": "R", "confidence": 0.9}]})
         mock_msg = MagicMock()
@@ -612,7 +612,7 @@ class TestTimeoutParameter:
         assert kwargs.get("timeout") == 45
 
     async def test_gemini_triage_passes_timeout(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 30)
+        monkeypatch.setattr("src.aml_workflow.providers.gemini.get_llm_timeout", lambda: 30)
         p = _make_gemini_provider()
         mock_resp = MagicMock()
         mock_resp.text = '{"escalate": true, "reason": "R", "confidence": 0.8}'
@@ -622,7 +622,7 @@ class TestTimeoutParameter:
         assert kwargs.get("timeout") == 30
 
     async def test_gemini_sar_passes_timeout(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 60)
+        monkeypatch.setattr("src.aml_workflow.providers.gemini.get_llm_timeout", lambda: 60)
         p = _make_gemini_provider()
         mock_resp = MagicMock()
         mock_resp.text = "SAR text"
@@ -633,7 +633,7 @@ class TestTimeoutParameter:
         assert kwargs.get("timeout") == 60
 
     async def test_gemini_batch_passes_timeout(self, monkeypatch):
-        monkeypatch.setattr("src.aml_workflow.providers.get_llm_timeout", lambda: 45)
+        monkeypatch.setattr("src.aml_workflow.providers.gemini.get_llm_timeout", lambda: 45)
         p = _make_gemini_provider()
         mock_resp = MagicMock()
         mock_resp.text = '{"decisions": [{"source_txn_id": "TXN001", "escalate": True, "reason": "R", "confidence": 0.9}]}'
