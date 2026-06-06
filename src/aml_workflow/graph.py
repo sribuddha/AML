@@ -10,7 +10,6 @@ from src.aml_workflow.nodes import (
     _is_transient,
     load_data_node,
     rule_engine_batch_node,
-    enrich_node,
     stage2_triage_node,
     stage3_triage_node,
     sar_node,
@@ -40,7 +39,6 @@ def create_workflow(
 
     builder.add_node("load_data", _bind(load_data_node, db=db, llm=llm, mode=mode))
     builder.add_node("rule_engine_batch", _bind(rule_engine_batch_node, db=db, llm=llm, mode=mode))
-    builder.add_node("enrich_node", _bind(enrich_node, db=db, llm=llm, mode=mode))
     builder.add_node("stage2_triage", _bind(stage2_triage_node, db=db, llm=llm, mode=mode))
     builder.add_node("stage3_triage", _bind(stage3_triage_node, db=db, llm=llm, mode=mode))
     builder.add_node("sar_node", _bind(sar_node, db=db, llm=llm, mode=mode))
@@ -52,9 +50,8 @@ def create_workflow(
     builder.add_conditional_edges(
         "rule_engine_batch",
         _bind(has_flagged, mode=mode),
-        {"stage2": "enrich_node", "skip": "finalize"},
+        {"stage2": "stage2_triage", "skip": "finalize"},
     )
-    builder.add_edge("enrich_node", "stage2_triage")
     builder.add_conditional_edges(
         "stage2_triage",
         _bind(has_escalated, mode=mode),

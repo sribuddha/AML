@@ -83,21 +83,22 @@ def _build_triage_stage3_messages(
     flag_details: dict[str, str],
     recent_txns: list[dict],
     rules: list[dict] | None,
+    enriched_context: dict | None = None,
 ) -> tuple[str, str]:
     system_prompt = get_triage_stage3_system()
     user_prompt = (
         render_triage_user()
         + "\n\n" + _DATA_DISCLAIMER + " and recent customer history.\n\n"
-        + _build_txn_json_block(transaction, flag_details, rules, recent_txns=recent_txns)
+        + _build_txn_json_block(transaction, flag_details, rules, recent_txns=recent_txns, enriched_context=enriched_context)
     )
     return system_prompt, user_prompt
 
 
-def _build_sar_prompt(transaction: dict, flag_details: dict[str, str], triage: TriageDecision) -> str:
+def _build_sar_prompt(transaction: dict, flag_details: dict[str, str], triage: TriageDecision, enriched_context: dict | None = None) -> str:
     return (
         "Generate a Suspicious Activity Report (SAR) for the transaction below.\n\n"
         + _DATA_DISCLAIMER + "\n\n"
-        + _build_txn_json_block(transaction, flag_details)
+        + _build_txn_json_block(transaction, flag_details, enriched_context=enriched_context)
         + f"\n\nEscalation Reason: {triage.reason}\n"
         f"Flagged Rules: {', '.join(flag_details.values()) if flag_details else 'None'}\n\n"
         "Write a detailed SAR narrative. Mention each flagged rule by name and explain why "
@@ -162,11 +163,12 @@ def _build_triage_stage3_batch_item(
     transaction: dict,
     flag_details: dict[str, str],
     recent_txns: list[dict],
+    enriched_context: dict | None = None,
 ) -> str:
     parts = [
         f"Transaction {idx}:",
         _DATA_DISCLAIMER + " and recent customer history.",
-        _build_txn_json_block(transaction, flag_details, recent_txns=recent_txns),
+        _build_txn_json_block(transaction, flag_details, recent_txns=recent_txns, enriched_context=enriched_context),
     ]
     return "\n\n".join(parts)
 
@@ -195,11 +197,13 @@ def _build_triage_stage3_batch_messages(
     flag_details_list: list[dict],
     recent_txns_list: list[list[dict]],
     rules: list[dict] | None,
+    enriched_context_list: list[dict | None] | None = None,
 ) -> tuple[str, str]:
     system = get_triage_stage3_system()
     blocks: list[str] = ["Review each escalated transaction below for deeper analysis with recent transaction history.\n"]
     for i, (txn, fd, recent) in enumerate(zip(transactions, flag_details_list, recent_txns_list), 1):
-        blocks.append(_build_triage_stage3_batch_item(i, txn, fd, recent))
+        ec = enriched_context_list[i - 1] if enriched_context_list else None
+        blocks.append(_build_triage_stage3_batch_item(i, txn, fd, recent, ec))
     blocks.append(
         '\nRespond with ONLY a valid JSON object containing a "decisions" array '
         'with one entry per transaction in the same order:\n'
@@ -212,13 +216,15 @@ def _build_sar_batch_prompt(
     transactions: list[dict],
     flag_details_list: list[dict],
     triage_list: list[TriageDecision],
+    enriched_context_list: list[dict | None] | None = None,
 ) -> str:
     blocks: list[str] = ["Generate a Suspicious Activity Report for each escalated transaction below.\n"]
     for i, (txn, fd, td) in enumerate(zip(transactions, flag_details_list, triage_list), 1):
+        ec = enriched_context_list[i - 1] if enriched_context_list else None
         blocks.append(
             f"Transaction {i}:\n\n"
             + _DATA_DISCLAIMER + "\n\n"
-            + _build_txn_json_block(txn, fd)
+            + _build_txn_json_block(txn, fd, enriched_context=ec)
             + f"\n\nEscalation Reason: {td.reason}\n"
             f"Flagged Rules: {', '.join(fd.values()) if fd else 'None'}"
         )

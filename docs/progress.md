@@ -172,7 +172,7 @@
   - Velocity z-score (this-week vs prior 4 weeks)
   - Dormancy (days since last transaction)
   - Account profile (type, age)
-- `enrich_node` in `graph.py` — new node between `rule_engine_batch` and `stage2_triage`; only runs when flagged transactions exist
+- `enrich_node` folded into `stage2_triage` (now inlined before LLM call, no separate LangGraph node)
 - `llm.triage()` — `enriched_context` param appended to user prompt (same pattern as stage3 history)
 - 26 unit tests, 99% coverage on `enrichment.py`
 - `EnrichmentSnapshot` model + migration `010_enrichment_snapshot.py` — write-only table keyed by `(upload_id, customer_id)` for eval audit trail

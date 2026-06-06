@@ -233,6 +233,5 @@ async def enrich_transactions(
             for cid, ctx in results.items()
         ]
         db.add_all(snapshots)
-        await db.commit()
 
     return results

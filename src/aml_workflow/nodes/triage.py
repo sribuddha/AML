@@ -16,9 +16,15 @@ async def stage2_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
     async def impl(state: WorkflowState) -> dict:
         from src.core.models.transaction import Transaction as TxnModel
         from src.core.models.validation_result import ValidationResult
+        from src.aml_workflow.enrichment import enrich_transactions
 
         flagged = [r for r in state["results"] if r["status"] == "flagged"]
         now = _now()
+
+        # Enrich customer data for flagged transactions
+        flagged_ids = {r["transaction_id"] for r in flagged}
+        flagged_txns = [{**t, "status": "flagged"} for t in state["txn_map"].values() if t["id"] in flagged_ids]
+        enriched = await enrich_transactions(db, flagged_txns, state["upload_id"])
 
         llm_batch: list[tuple[dict, dict, dict, dict | None]] = []
         bypasses: list[tuple[dict, dict]] = []
@@ -26,7 +32,7 @@ async def stage2_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
 
         for result in flagged:
             txn_id = result["transaction_id"]
-            txn = next((t for t in state["transactions"] if t["id"] == txn_id), None)
+            txn = state["txn_map"].get(txn_id)
             if txn is None:
                 continue
 
@@ -36,7 +42,6 @@ async def stage2_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
                 bypasses.append((result, txn))
             else:
                 flag_details = result.get("flag_details") or {}
-                enriched = state.get("enriched_data", {})
                 customer_id = txn.get("customer_id", "")
                 enriched_context = enriched.get(customer_id) if enriched else None
                 llm_batch.append((result, txn, flag_details, enriched_context))
@@ -108,7 +113,7 @@ async def stage2_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
         logger.info("Stage2 triage: %d escalated, %d auto-reviewed out of %d flagged",
                      escalated_count, len(flagged) - escalated_count, len(flagged))
 
-        return {"triage_results": {r["transaction_id"]: r for r in flagged}}
+        return {"enriched_data": enriched}
 
     return await run_node(state, db, "stage2_triage", impl)
 
@@ -124,14 +129,15 @@ async def stage3_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
 
         now = _now()
 
-        llm_batch: list[tuple[dict, dict, dict, list[dict]]] = []
+        llm_batch: list[tuple[dict, dict, dict, list[dict], dict | None]] = []
         bypasses: list[tuple[dict, dict]] = []
+        enriched = state.get("enriched_data", {})
 
         # Collect unique customer IDs for batch recent_txns query
         customer_ids = set()
         for result in escalated:
             txn_id = result["transaction_id"]
-            txn = next((t for t in state["transactions"] if t["id"] == txn_id), None)
+            txn = state["txn_map"].get(txn_id)
             if txn is not None:
                 customer_ids.add(txn["customer_id"])
 
@@ -155,7 +161,7 @@ async def stage3_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
 
         for result in escalated:
             txn_id = result["transaction_id"]
-            txn = next((t for t in state["transactions"] if t["id"] == txn_id), None)
+            txn = state["txn_map"].get(txn_id)
             if txn is None:
                 continue
 
@@ -167,14 +173,16 @@ async def stage3_triage_node(state: WorkflowState, db: AsyncSession, llm: LLMCli
                     r for r in customer_recent.get(txn["customer_id"], [])
                     if r.get("date") != txn.get("date") or r.get("amount") != txn.get("amount")
                 ][:20]
-                llm_batch.append((result, txn, flag_details, recent_list))
+                customer_id = txn.get("customer_id", "")
+                enriched_context = enriched.get(customer_id) if enriched else None
+                llm_batch.append((result, txn, flag_details, recent_list, enriched_context))
             else:
                 bypasses.append((result, txn))
 
         if llm_batch:
-            results_list, txns_list, flags_list, recent_list = zip(*llm_batch)
-            decisions = await llm.triage_stage3_batch(list(txns_list), list(flags_list), list(recent_list), rules=state["rules"])
-            for (result, txn, _, _), decision in zip(llm_batch, decisions):
+            results_list, txns_list, flags_list, recent_list, ec_list = zip(*llm_batch)
+            decisions = await llm.triage_stage3_batch(list(txns_list), list(flags_list), list(recent_list), rules=state["rules"], enriched_context_list=list(ec_list))
+            for (result, txn, _, _, _), decision in zip(llm_batch, decisions):
                 new_status = "pending_review" if decision.escalate else "clean"
                 risk_level = "high" if decision.escalate else "auto_reviewed"
 

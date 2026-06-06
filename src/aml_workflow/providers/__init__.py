@@ -44,6 +44,7 @@ class LLMProvider(ABC):
         flag_details: dict[str, str],
         recent_txns: list[dict],
         rules: list[dict] | None = None,
+        enriched_context: dict | None = None,
     ) -> TriageDecision: ...
 
     @abstractmethod
@@ -52,6 +53,7 @@ class LLMProvider(ABC):
         transaction: dict,
         flag_details: dict[str, str],
         triage: TriageDecision,
+        enriched_context: dict | None = None,
     ) -> SarResult: ...
 
     @abstractmethod
@@ -70,6 +72,7 @@ class LLMProvider(ABC):
         flag_details_list: list[dict],
         recent_txns_list: list[list[dict]],
         rules: list[dict] | None = None,
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[TriageDecision]: ...
 
     @abstractmethod
@@ -78,6 +81,7 @@ class LLMProvider(ABC):
         transactions: list[dict],
         flag_details_list: list[dict],
         triage_list: list[TriageDecision],
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[SarResult]: ...
 
 
@@ -98,6 +102,7 @@ class FallbackProvider(LLMProvider):
         flag_details: dict[str, str],
         recent_txns: list[dict],
         rules: list[dict] | None = None,
+        enriched_context: dict | None = None,
     ) -> TriageDecision:
         logger.warning("LLM not configured — using fallback triage stage3")
         return _triage_fallback(transaction, flag_details, rules)
@@ -107,6 +112,7 @@ class FallbackProvider(LLMProvider):
         transaction: dict,
         flag_details: dict[str, str],
         triage: TriageDecision,
+        enriched_context: dict | None = None,
     ) -> SarResult:
         logger.warning("LLM not configured — using fallback SAR")
         return _sar_fallback(transaction, flag_details, triage)
@@ -127,6 +133,7 @@ class FallbackProvider(LLMProvider):
         flag_details_list: list[dict],
         recent_txns_list: list[list[dict]],
         rules: list[dict] | None = None,
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[TriageDecision]:
         logger.warning("LLM not configured — using fallback stage3 batch")
         return _triage_fallback_batch(transactions, flag_details_list, rules)
@@ -136,6 +143,7 @@ class FallbackProvider(LLMProvider):
         transactions: list[dict],
         flag_details_list: list[dict],
         triage_list: list[TriageDecision],
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[SarResult]:
         logger.warning("LLM not configured — using fallback SAR batch")
         return _sar_fallback_batch(transactions, flag_details_list, triage_list)

@@ -129,9 +129,9 @@ class TestTriageNode:
         workflow = create_workflow(seeded_session, mock_llm)
         state = await workflow.ainvoke({"upload_id": upload_id})
         assert mock_llm.triage_batch.called
-        triage_results = state["triage_results"]
-        assert len(triage_results) > 0
-        for txn_id, result in triage_results.items():
+        flagged = [r for r in state["results"] if r["status"] == "flagged"]
+        assert len(flagged) > 0
+        for result in flagged:
             assert isinstance(result, dict)
             assert "risk_level" in result
             assert "triage_reasoning" in result
@@ -156,7 +156,7 @@ class TestTriageNode:
         workflow = create_workflow(seeded_session, mock_llm)
         state = await workflow.ainvoke({"upload_id": upload_id})
         assert not mock_llm.triage_batch.called
-        assert state["triage_results"] == {}
+        assert state["enriched_data"] == {}
 
 
 class TestWriteResults:
@@ -385,7 +385,8 @@ class TestStage1Mode:
         workflow = create_workflow(seeded_session, mock_llm, mode="stage1")
         state = await workflow.ainvoke({"upload_id": upload_id})
         assert not mock_llm.triage_batch.called
-        for txn_id, result in state["triage_results"].items():
+        flagged = [r for r in state["results"] if r["status"] == "flagged"]
+        for result in flagged:
             assert result["risk_level"] == "high"
             assert result["triage_reasoning"] is not None
 
@@ -431,8 +432,8 @@ class TestStage2Mode:
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm_no_escalate, mode="stage2")
         state = await workflow.ainvoke({"upload_id": upload_id})
-        triage_data = state["triage_results"]
-        for txn_id, result in triage_data.items():
+        flagged = [r for r in state["results"] if r["status"] == "flagged"]
+        for result in flagged:
             assert result["risk_level"] == "auto_reviewed"
 
 
@@ -461,8 +462,9 @@ class TestStage3Mode:
         workflow = create_workflow(seeded_session, mock_llm_escalate_then_clear, mode="full")
         state = await workflow.ainvoke({"upload_id": upload_id})
         # Stage 2 escalates (high), Stage 3 reverses (auto_reviewed)
-        for txn_id, result in state["triage_results"].items():
-            assert result["risk_level"] == "auto_reviewed"
+        for result in state["results"]:
+            if result["status"] == "flagged":
+                assert result["risk_level"] == "auto_reviewed"
         assert mock_llm_escalate_then_clear.triage_batch.called
         assert mock_llm_escalate_then_clear.triage_stage3_batch.called
 
@@ -483,8 +485,9 @@ class TestStage3Mode:
         state = await workflow.ainvoke({"upload_id": upload_id})
         # Stage 2 does not escalate, so Stage 3 is skipped entirely
         assert not mock_llm_no_escalate.triage_stage3_batch.called
-        for txn_id, result in state["triage_results"].items():
-            assert result["risk_level"] == "auto_reviewed"
+        for result in state["results"]:
+            if result["status"] == "flagged":
+                assert result["risk_level"] == "auto_reviewed"
 
 
 # ── Interrupt / Human-in-the-Loop tests ──────────────────────────
@@ -599,8 +602,8 @@ class TestNodeRetryFailure:
         workflow = create_workflow(seeded_session, mock_llm_no_escalate, mode="stage2")
         state = await workflow.ainvoke({"upload_id": upload_id})
         assert call_count == 2
-        triage_results = state.get("triage_results", {})
-        assert len(triage_results) > 0
+        flagged = [r for r in state.get("results", []) if r.get("status") == "flagged"]
+        assert len(flagged) > 0
 
 
 class TestFailureEvents:

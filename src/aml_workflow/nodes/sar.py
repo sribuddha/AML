@@ -24,15 +24,16 @@ async def sar_node(state: WorkflowState, db: AsyncSession, llm: LLMClient | None
         now = _now()
         sars: list[dict] = []
 
-        llm_batch: list[tuple[dict, dict, dict]] = []
+        llm_batch: list[tuple[dict, dict, dict, dict, dict | None]] = []
         placeholder_items: list[tuple[dict, dict, dict]] = []
+        enriched = state.get("enriched_data", {})
 
         for result in state["results"]:
             if result.get("risk_level") != "high":
                 continue
 
             txn_id = result["transaction_id"]
-            txn = next((t for t in state["transactions"] if t["id"] == txn_id), None)
+            txn = state["txn_map"].get(txn_id)
             if txn is None:
                 continue
 
@@ -45,14 +46,16 @@ async def sar_node(state: WorkflowState, db: AsyncSession, llm: LLMClient | None
                     reason=result.get("triage_reasoning", ""),
                     confidence=result.get("llm_confidence", 0.0),
                 )
-                llm_batch.append((result, txn, flag_details, triage))
+                customer_id = txn.get("customer_id", "")
+                enriched_context = enriched.get(customer_id) if enriched else None
+                llm_batch.append((result, txn, flag_details, triage, enriched_context))
             else:
                 placeholder_items.append((result, txn, flag_details))
 
         if llm_batch:
-            results_list, txns_list, flags_list, triage_list = zip(*llm_batch)
-            sar_results = await llm.generate_sar_batch(list(txns_list), list(flags_list), list(triage_list))
-            for (result, txn, _, _), sar_result in zip(llm_batch, sar_results):
+            results_list, txns_list, flags_list, triage_list, ec_list = zip(*llm_batch)
+            sar_results = await llm.generate_sar_batch(list(txns_list), list(flags_list), list(triage_list), enriched_context_list=list(ec_list))
+            for (result, txn, _, _, _), sar_result in zip(llm_batch, sar_results):
                 rule_id = next(iter((result.get("flag_details") or {}).keys()), None)
                 sars.append({
                     "transaction_id": result["transaction_id"],

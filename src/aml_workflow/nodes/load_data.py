@@ -57,9 +57,9 @@ async def load_data_node(state: WorkflowState, db: AsyncSession, llm: LLMClient 
 
         return {
             "transactions": transactions,
+            "txn_map": {t["id"]: t for t in transactions},
             "rules": rules,
             "validated_at": _now(),
-            "triage_results": {},
             "enriched_data": {},
             "sars": [],
         }

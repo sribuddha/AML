@@ -212,9 +212,11 @@ class LLMClient:
         flag_details_list: list[dict],
         recent_txns_list: list[list[dict]],
         rules: list[dict] | None = None,
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[TriageDecision]:
         chunks = _chunk(
-            list(zip(transactions, flag_details_list, recent_txns_list)),
+            list(zip(transactions, flag_details_list, recent_txns_list,
+                     enriched_context_list or [None] * len(transactions))),
             get_stage3_batch_size(),
         )
         sem = asyncio.Semaphore(get_stage3_concurrency())
@@ -222,9 +224,9 @@ class LLMClient:
 
         async def _run_chunk(chunk: list[tuple]) -> list[TriageDecision]:
             async with sem:
-                txns, flags, recent = zip(*chunk)
+                txns, flags, recent, ec = zip(*chunk)
                 system, user = _build_triage_stage3_batch_messages(
-                    list(txns), list(flags), list(recent), rules,
+                    list(txns), list(flags), list(recent), rules, list(ec),
                 )
                 estimated = _estimate_call_cost(
                     self.triage_model,
@@ -236,7 +238,7 @@ class LLMClient:
                     logger.warning("LLM budget exceeded for stage3 batch — using fallback")
                     return _triage_fallback_batch(list(txns), list(flags), rules)
                 decisions = await self._provider.triage_stage3_batch(
-                    list(txns), list(flags), list(recent), rules,
+                    list(txns), list(flags), list(recent), rules, list(ec),
                 )
                 self._total_cost += estimated
                 return decisions
@@ -251,9 +253,11 @@ class LLMClient:
         transactions: list[dict],
         flag_details_list: list[dict],
         triage_list: list[TriageDecision],
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[SarResult]:
         chunks = _chunk(
-            list(zip(transactions, flag_details_list, triage_list)),
+            list(zip(transactions, flag_details_list, triage_list,
+                     enriched_context_list or [None] * len(transactions))),
             get_sar_batch_size(),
         )
         sem = asyncio.Semaphore(get_sar_concurrency())
@@ -261,8 +265,8 @@ class LLMClient:
 
         async def _run_chunk(chunk: list[tuple]) -> list[SarResult]:
             async with sem:
-                txns, flags, triages = zip(*chunk)
-                prompt = _build_sar_batch_prompt(list(txns), list(flags), list(triages))
+                txns, flags, triages, ec = zip(*chunk)
+                prompt = _build_sar_batch_prompt(list(txns), list(flags), list(triages), list(ec))
                 estimated = _estimate_call_cost(
                     self.sar_model,
                     len(prompt),
@@ -273,7 +277,7 @@ class LLMClient:
                     logger.warning("LLM budget exceeded for SAR batch — using fallback")
                     return _sar_fallback_batch(list(txns), list(flags), list(triages))
                 results = await self._provider.generate_sar_batch(
-                    list(txns), list(flags), list(triages),
+                    list(txns), list(flags), list(triages), list(ec),
                 )
                 self._total_cost += estimated
                 return results

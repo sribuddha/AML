@@ -108,7 +108,7 @@ class TestStage2Scenarios:
         workflow = create_workflow(seeded_session, mock_llm_escalate, mode="stage2")
         state = await workflow.ainvoke({"upload_id": upload_id})
 
-        txn1 = state["triage_results"]["eval-txn-1"]
+        txn1 = next(r for r in state["results"] if r["transaction_id"] == "eval-txn-1")
         assert txn1["risk_level"] == "high"
         assert "High value" in txn1["triage_reasoning"]
 
@@ -131,7 +131,7 @@ class TestStage2Scenarios:
         workflow = create_workflow(seeded_session, mock_llm_clear, mode="stage2")
         state = await workflow.ainvoke({"upload_id": upload_id})
 
-        txn1 = state["triage_results"]["eval-txn-1"]
+        txn1 = next(r for r in state["results"] if r["transaction_id"] == "eval-txn-1")
         assert txn1["risk_level"] == "auto_reviewed"
         assert "Routine amount" in txn1["triage_reasoning"]
 
@@ -176,7 +176,7 @@ class TestStage3Scenarios:
         workflow = create_workflow(seeded_session, mock_llm_escalate, mode="full")
         state = await workflow.ainvoke({"upload_id": upload_id})
 
-        txn1 = state["triage_results"]["eval-txn-1"]
+        txn1 = next(r for r in state["results"] if r["transaction_id"] == "eval-txn-1")
         assert txn1["risk_level"] == "high"
 
         sars = (await seeded_session.execute(
@@ -190,7 +190,7 @@ class TestStage3Scenarios:
         workflow = create_workflow(seeded_session, mock_llm_stage3_clear, mode="full")
         state = await workflow.ainvoke({"upload_id": upload_id})
 
-        txn1 = state["triage_results"]["eval-txn-1"]
+        txn1 = next(r for r in state["results"] if r["transaction_id"] == "eval-txn-1")
         assert txn1["risk_level"] == "auto_reviewed"
         assert "Deep-dive found no pattern" in txn1["triage_reasoning"]
 
@@ -205,7 +205,8 @@ class TestStage3Scenarios:
         state = await workflow.ainvoke({"upload_id": upload_id})
 
         assert not mock_llm_clear.triage_stage3_batch.called
-        for txn_id, result in state["triage_results"].items():
+        flagged = [r for r in state["results"] if r["status"] == "flagged"]
+        for result in flagged:
             assert result["risk_level"] == "auto_reviewed"
 
         sars = (await seeded_session.execute(

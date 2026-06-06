@@ -89,10 +89,11 @@ class OpenAIProvider(LLMProvider):
         flag_details: dict[str, str],
         recent_txns: list[dict],
         rules: list[dict] | None = None,
+        enriched_context: dict | None = None,
     ) -> TriageDecision:
         from openai import APIError
 
-        system, user = _build_triage_stage3_messages(transaction, flag_details, recent_txns, rules)
+        system, user = _build_triage_stage3_messages(transaction, flag_details, recent_txns, rules, enriched_context)
         logger.info("OpenAI stage3: model=%s, txn=%s", self._triage_model, transaction.get("source_txn_id", "N/A"))
         try:
             resp = await self._openai.chat.completions.create(
@@ -132,10 +133,11 @@ class OpenAIProvider(LLMProvider):
         transaction: dict,
         flag_details: dict[str, str],
         triage: TriageDecision,
+        enriched_context: dict | None = None,
     ) -> SarResult:
         from openai import APIError
 
-        prompt = _build_sar_prompt(transaction, flag_details, triage)
+        prompt = _build_sar_prompt(transaction, flag_details, triage, enriched_context)
         logger.info("OpenAI SAR: model=%s, txn=%s", self._sar_model, transaction.get("source_txn_id", "N/A"))
         try:
             resp = await self._openai.chat.completions.create(
@@ -205,9 +207,10 @@ class OpenAIProvider(LLMProvider):
         flag_details_list: list[dict],
         recent_txns_list: list[list[dict]],
         rules: list[dict] | None = None,
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[TriageDecision]:
         from openai import APIError
-        system, user = _build_triage_stage3_batch_messages(transactions, flag_details_list, recent_txns_list, rules)
+        system, user = _build_triage_stage3_batch_messages(transactions, flag_details_list, recent_txns_list, rules, enriched_context_list)
         logger.info("OpenAI stage3 batch: model=%s, n=%d", self._triage_model, len(transactions))
         try:
             resp = await self._openai.chat.completions.create(
@@ -252,9 +255,10 @@ class OpenAIProvider(LLMProvider):
         transactions: list[dict],
         flag_details_list: list[dict],
         triage_list: list[TriageDecision],
+        enriched_context_list: list[dict | None] | None = None,
     ) -> list[SarResult]:
         from openai import APIError
-        prompt = _build_sar_batch_prompt(transactions, flag_details_list, triage_list)
+        prompt = _build_sar_batch_prompt(transactions, flag_details_list, triage_list, enriched_context_list)
         logger.info("OpenAI SAR batch: model=%s, n=%d", self._sar_model, len(transactions))
         try:
             resp = await self._openai.chat.completions.create(

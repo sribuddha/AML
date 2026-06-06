@@ -150,20 +150,24 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 ┌──────────────────────────────────────▼────────────────────────────┐
 │              AML_Workflow (LangGraph StateGraph)                   │
 │                                                                    │
- │  ┌──────────────┐   ┌────────────────────┐   ┌──────────────────┐ │
- │  │  load_data   │──▶│  rule_engine_batch │──▶│   enrich_node    │ │
- │  │              │   │                    │   │                  │ │
- │  │ Queries DB   │   │ Evaluates every    │   │ Customer-level   │ │
- │  │ • accepted   │   │ (txn × rule)       │   │ aggregations:    │ │
- │  │   txns       │   │ condition pair     │   │ • 30d stats      │ │
- │  │ • active     │   │ OR logic across    │   │ • structuring    │ │
- │  │   rules      │   │ conditions         │   │ • velocity z     │ │
- │  └──────────────┘   │ Updates txn.status │   │ • dormancy       │ │
- │                     └────────┬───────────┘   │ • account prof.  │ │
- │                              │               └────────┬─────────┘ │
- │                              ▼                        ▼           │
- │                     persist results          stage2_triage         │
- │                     + audit events               │                 │
+ │  ┌──────────────┐   ┌────────────────────┐                         │
+ │  │  load_data   │──▶│  rule_engine_batch │──▶ persist results      │
+ │  │              │   │                    │    + audit events       │
+ │  │ Queries DB   │   │ Evaluates every    │         │              │
+ │  │ • accepted   │   │ (txn × rule)       │         ▼              │
+ │  │   txns       │   │ condition pair     │   ┌──────────────────┐ │
+ │  │ • active     │   │ OR logic across    │   │  stage2_triage   │ │
+ │  │   rules      │   │ conditions         │   │ (enrich + LLM)   │ │
+ │  └──────────────┘   │ Updates txn.status │   │                  │ │
+ │                     └────────────────────┘   │ Customer-level   │ │
+ │                                              │ aggregations:    │ │
+ │                                              │ • 30d stats      │ │
+ │                                              │ • structuring    │ │
+ │                                              │ • velocity z     │ │
+ │                                              │ • dormancy       │ │
+ │                                              │ • account prof.  │ │
+ │                                              └────────┬─────────┘ │
+ │                                                       │           │
  │                              │            flagged→clean            │
  │                              │            flagged→escalated        │
  │                              │                  │                  │
@@ -195,7 +199,7 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
  │   rule_engine_batch → persist results → finalize → END            │
  │                                                                    │
  │  Flagged path (all modes):                                         │
- │   rule_engine_batch → persist → enrich_node → stage2_triage → ... │
+ │   rule_engine_batch → persist results → stage2_triage → ...       │
  │                                                                    │
  │  Full path (stage3 deep-dive):                                     │
  │   ... → stage2_triage → stage3_triage → sar_node → …              │
@@ -204,8 +208,8 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 | Mode | LLM Usage | Pipeline Depth |
 |------|-----------|----------------|
 | `stage1` | None — all flagged → escalated | Rules → SAR |
-| `stage2` | Stage2 triage only (with enriched context) | Rules → Enrich → Stage2 → SAR |
-| `stage3` | Stage2 + Stage3 triage + SAR generation | Rules → Enrich → Stage2 → Stage3 → SAR |
+| `stage2` | Stage2 triage only (with enriched context) | Rules → Stage2 → SAR |
+| `stage3` | Stage2 + Stage3 triage + SAR generation | Rules → Stage2 → Stage3 → SAR |
 | `full` | Same as stage3 | Same as stage3 |
 
 See §6 (Detailed Design — Workflow) for the full mode table with per-node behavior.
@@ -332,12 +336,12 @@ Background LangGraph state machine that processes uploaded transactions through 
 
 The graph accepts a `mode` parameter that controls LLM usage and pipeline depth:
 
-| Mode | `enrich_node` | `stage2_triage` | `stage3_triage` | `sar_node` | Use case |
-|------|--------------|----------------|----------------|-----------|----------|
-| `stage1` | Skipped | Auto-escalate all flagged (no LLM) | Skipped | Placeholder SAR | Test human review flow without LLM |
-| `stage2` | Runs | LLM triage with enriched context + rule evidence | Skipped | Placeholder SAR | Test triage filter reduces SAR volume |
-| `stage3` | Runs | LLM triage with enriched context + rule evidence | LLM deep-dive with customer history | LLM-generated SAR | Full pipeline with AI analysis |
-| `full` | Runs | Same as stage3 | Same as stage3 | LLM-generated SAR | Full pipeline (alias for stage3) |
+| Mode | `stage2_triage` | `stage3_triage` | `sar_node` | Use case |
+|------|----------------|----------------|-----------|----------|
+| `stage1` | Auto-escalate all flagged (no LLM, enrichment skipped) | Skipped | Placeholder SAR | Test human review flow without LLM |
+| `stage2` | Enrich customer data + LLM triage with rule evidence | Skipped | Placeholder SAR | Test triage filter reduces SAR volume |
+| `stage3` | Enrich customer data + LLM triage with rule evidence | LLM deep-dive with customer history | LLM-generated SAR | Full pipeline with AI analysis |
+| `full` | Same as stage3 | Same as stage3 | LLM-generated SAR | Full pipeline (alias for stage3) |
 
 Default: `DEFAULT_MODE = "full"` in `src/aml_workflow/triggers.py`. Change the constant to switch modes.
 
@@ -383,7 +387,7 @@ Without a checkpointer, `interrupt()` still pauses but cannot resume — the gra
 |---------|--------|
 | Compute | Single local process: `uvicorn src.bff.app:app --reload`. Python >= 3.14. |
 | Database | SQLite via `sqlite+aiosqlite` at `<AML_DATA_DIR>/aml.db`. Alembic migrations auto-run on startup via `app.py` lifespan. Each background task creates its own `AsyncSession`. |
-| Orchestration | LangGraph `StateGraph` — 8 nodes: load_data, rule_engine_batch, enrich_node, stage2_triage, stage3_triage, sar_node, human_review, finalize. Single-threaded asyncio. Checkpoints to `<DATA_DIR>/checkpoints.db` via `AsyncSqliteSaver` for interrupt/resume. Node retry: 3 attempts, exponential backoff (`2^attempt` s), non-transient → immediate fail. |
+| Orchestration | LangGraph `StateGraph` — 7 nodes: load_data, rule_engine_batch, stage2_triage (enrichment inlined), stage3_triage, sar_node, human_review, finalize. Single-threaded asyncio. Checkpoints to `<DATA_DIR>/checkpoints.db` via `AsyncSqliteSaver` for interrupt/resume. Node retry: 3 attempts, exponential backoff (`2^attempt` s), non-transient → immediate fail. |
 | Queues | None. Workflow triggered via `asyncio.create_task(run_validation(upload_id))` after upload. No external message brokers. |
 | LLM Providers | OpenAI (`AsyncOpenAI`) and Gemini (`genai.Client`). Provider + model names via env vars (see `.env.template`). No API keys → deterministic fallback. |
 | Caching | None. Every request queries SQLite directly. No Redis or in-memory cache. |
@@ -636,7 +640,7 @@ No service-to-service HTTP calls. Internal communication is in-process:
 | BFF — reprocess route | AML_Workflow trigger | `asyncio.create_task(run_validation(upload_id))` | `upload_id: str` |
 | AML_Workflow — load_data | database layer | Direct SQLAlchemy async query | `upload_id` → `[txn dicts]` + `[active deterministic rules]` |
 | AML_Workflow — rule_engine_batch | validator.evaluate_rules | Function call | `(txn: dict, rules: [Rule]) → {status, flag_details}` |
-| AML_Workflow — enrich_node | enrichment.enrich_transactions | Async function call | `(db, flagged_txns, upload_id) → {customer_id: dict}` |
+| AML_Workflow — stage2_triage | enrichment.enrich_transactions | Async function call (inlined before LLM) | `(db, flagged_txns, upload_id) → {customer_id: dict}` |
 | AML_Workflow — stage2_triage | LLMClient.triage | Method call | `(txn, flag_details, rules, enriched_context) → TriageDecision` |
 | AML_Workflow — sar_node | LLMClient.generate_sar | Method call | `(txn: dict, flag_details: dict, triage: TriageDecision) → SAR content` |
 
@@ -661,7 +665,7 @@ No service-to-service HTTP calls. Internal communication is in-process:
 | `validation_result` | Per-transaction results from LangGraph validation (deterministic rules + optional LLM triage) |
 | `sar` | Suspicious Activity Reports generated by LLM, awaiting human review |
 | `audit_log` | Event-sourced audit trail — every workflow step, validation write, and SAR review logged with event_type, entity, payload, actor |
-| `enrichment_snapshot` | Eval audit trail — per-customer enrichment context frozen at `enrich_node` time, keyed by `(upload_id, customer_id)` |
+| `enrichment_snapshot` | Eval audit trail — per-customer enrichment context frozen at `stage2_triage` time, keyed by `(upload_id, customer_id)` |
 
 ##### `customer` Schema
 
