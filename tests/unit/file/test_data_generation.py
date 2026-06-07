@@ -4,6 +4,7 @@ import pytest
 
 from scripts.generate_upload_data import generate as generate_upload
 from scripts.generate_stage1_fraud_data import generate as generate_stage1_fraud
+from scripts.generate_stage2_fraud_data import generate as generate_stage2_fraud
 from scripts.data_scrambler import scramble
 
 
@@ -71,6 +72,32 @@ async def test_generate_stage1_fraud_distributes_across_rules(tmp_path, seeded_s
     negative_values = sum(1 for a in amounts if a < 0)
     assert high_values >= 1
     assert negative_values >= 1
+
+
+@pytest.mark.asyncio
+async def test_generate_stage2_fraud_clearable_count(tmp_path, seeded_session):
+    output = tmp_path / "fraud.csv"
+    await generate_stage2_fraud(count=10, date="2026-06-15", output=output, auto_review_count=5)
+    lines = output.read_text().strip().splitlines()
+    assert len(lines) == 16  # header + 10 scenarios + 5 auto-review
+    src_ids = [r.split(",")[6] for r in lines[1:]]
+    ar_rows = [s for s in src_ids if s.startswith("AR_")]
+    assert len(ar_rows) == 5
+
+
+@pytest.mark.asyncio
+async def test_generate_stage2_fraud_clearable_eval(tmp_path, seeded_session):
+    import json
+    output = tmp_path / "fraud.csv"
+    await generate_stage2_fraud(count=10, date="2026-06-15", output=output, auto_review_count=3)
+    eval_path = output.with_suffix(".eval")
+    assert eval_path.exists()
+    entries = [json.loads(line) for line in eval_path.read_text().strip().splitlines()]
+    ar_entries = [e for e in entries if e.get("expected_auto_reviewed")]
+    assert len(ar_entries) == 3
+    for e in ar_entries:
+        assert e["expected_escalate"] is False
+        assert e["source_txn_id"].startswith("AR_")
 
 
 def test_scrambler_shuffles(tmp_path):

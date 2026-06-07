@@ -185,7 +185,7 @@ class TestWriteResults:
             assert vr.triage_reasoning is not None
 
 
-class TestAuditLog:
+class TestStatusTracking:
     async def test_creates_entity_audit_log_entries(self, seeded_session, seeded_upload, mock_llm):
         upload_id, _, _ = seeded_upload
         workflow = create_workflow(seeded_session, mock_llm)

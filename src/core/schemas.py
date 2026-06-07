@@ -226,6 +226,7 @@ class GenerateStep(BaseModel):
     type: str
     count: int = 100
     bad_rate: int = 0
+    auto_review_count: int = 0
 
 class GenerateRequest(BaseModel):
     steps: list[GenerateStep] = [GenerateStep(type="upload")]
@@ -242,6 +243,7 @@ class EvalEntry(BaseModel):
     source_txn_id: str
     scenario: str = ""
     expected_escalate: bool = True
+    expected_auto_reviewed: bool = False
     ground_truth: str = ""
     reason_hint: str = ""
 

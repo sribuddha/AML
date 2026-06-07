@@ -41,7 +41,7 @@ class TestRunStep:
         step = {"type": "stage2", "count": 15, "bad_rate": 0}
         output = tmp_path / "out.csv"
         await _run_step(step, "2026-05-01", output)
-        mock_gen.assert_called_once_with(15, "2026-05-01", output)
+        mock_gen.assert_called_once_with(15, "2026-05-01", output, auto_review_count=0)
 
     @patch("scripts.test_generate_fraud_data.generate", new_callable=AsyncMock)
     async def test_synthetic_step(self, mock_gen, tmp_path):

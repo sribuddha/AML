@@ -12,12 +12,12 @@ def _extract_numbers(text: str) -> set[str]:
     """Extract monetary values and decimal numbers from text.
 
     Only extracts:
-    - Values with $ prefix: $15,000.00
+    - Values with $ prefix: $15,000.00 or $-100.00
     - Values with decimal point: 15000.00
     This avoids matching digit sequences inside entity IDs like TXN001.
     """
     tokens = set()
-    for match in re.finditer(r"\$[\d,]+(?:\.\d{2})?|\b[\d,]+\.\d{2}\b", text):
+    for match in re.finditer(r"\$(-)?[\d,]+(?:\.\d{2})?|\b[\d,]+\.\d{2}\b", text):
         raw = match.group()
         cleaned = raw.replace("$", "").replace(",", "")
         tokens.add(cleaned)

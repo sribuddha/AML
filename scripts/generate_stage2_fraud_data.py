@@ -110,10 +110,44 @@ SCENARIOS: list[dict] = [
     },
 ]
 
+CLEARABLE_TEMPLATES: list[dict] = [
+    {
+        "tag": "CLEARABLE_THRESHOLD",
+        "scenario": "CLEARABLE_THRESHOLD",
+        "amount": 9500.0, "counterparty": "Local Shop",
+        "location": "Chicago",
+        "expected_escalate": False,
+        "expected_auto_reviewed": True,
+        "ground_truth": "auto_review_threshold",
+        "reason_hint": "flagged by threshold proximity but domestic & benign",
+    },
+    {
+        "tag": "CLEARABLE_ROUND",
+        "scenario": "CLEARABLE_ROUND",
+        "amount": 5000.0, "counterparty": "Payroll Services",
+        "location": "Austin",
+        "expected_escalate": False,
+        "expected_auto_reviewed": True,
+        "ground_truth": "auto_review_round",
+        "reason_hint": "flagged by round amount but payroll payment",
+    },
+    {
+        "tag": "CLEARABLE_NEGATIVE",
+        "scenario": "CLEARABLE_NEGATIVE",
+        "amount": -75.0, "counterparty": "Refund Co",
+        "location": "Boston",
+        "expected_escalate": False,
+        "expected_auto_reviewed": True,
+        "ground_truth": "auto_review_negative",
+        "reason_hint": "flagged by negative amount but small refund",
+    },
+]
+
 
 def _generate_row(scenario: dict, date: str, index: int,
-                  account_ids: list[str], customer_ids: list[str]) -> dict:
-    src_id = f"ST2_{scenario['tag']}_{index:03d}"
+                  account_ids: list[str], customer_ids: list[str],
+                  *, prefix: str = "ST2") -> dict:
+    src_id = f"{prefix}_{scenario['tag']}_{index:03d}"
     return {
         "account_id": random.choice(account_ids),
         "customer_id": random.choice(customer_ids),
@@ -125,18 +159,21 @@ def _generate_row(scenario: dict, date: str, index: int,
     }
 
 
-def _eval_entry(scenario: dict, date: str, index: int) -> dict:
-    return {
-        "source_txn_id": f"ST2_{scenario['tag']}_{index:03d}",
+def _eval_entry(scenario: dict, date: str, index: int, prefix: str = "ST2") -> dict:
+    entry: dict = {
+        "source_txn_id": f"{prefix}_{scenario['tag']}_{index:03d}",
         "scenario": scenario["scenario"],
         "expected_escalate": scenario["expected_escalate"],
         "ground_truth": scenario["ground_truth"],
         "reason_hint": scenario["reason_hint"],
         "stage": "stage2",
     }
+    if scenario.get("expected_auto_reviewed"):
+        entry["expected_auto_reviewed"] = True
+    return entry
 
 
-async def generate(count: int, date: str, output: Path):
+async def generate(count: int, date: str, output: Path, *, auto_review_count: int = 0):
     async with async_session_factory() as session:
         acct_result = await session.execute(text("SELECT account_id FROM account"))
         account_ids = [row[0] for row in acct_result.fetchall()]
@@ -169,20 +206,54 @@ async def generate(count: int, date: str, output: Path):
             rows.append(_generate_row(scenario, row_date, idx, account_ids, customer_ids))
             eval_entries.append(_eval_entry(scenario, row_date, idx))
 
+    auto_review_rows: list[dict] = []
+    auto_review_eval: list[dict] = []
+    for k in range(auto_review_count):
+        tmpl = random.choice(CLEARABLE_TEMPLATES)
+        row_date = date if random.random() < 0.95 else (
+            datetime.fromisoformat(date) - timedelta(days=1)
+        ).strftime("%Y-%m-%d")
+        src_id = f"AR_{tmpl['tag']}_{k:03d}"
+        row = {
+            "account_id": random.choice(account_ids),
+            "customer_id": random.choice(customer_ids),
+            "amount": f"{tmpl['amount']:.2f}",
+            "counterparty": tmpl["counterparty"],
+            "location": tmpl["location"],
+            "date": row_date,
+            "source_txn_id": src_id,
+        }
+        auto_review_rows.append(row)
+        eval_entry: dict = {
+            "source_txn_id": src_id,
+            "scenario": tmpl["scenario"],
+            "expected_escalate": tmpl["expected_escalate"],
+            "expected_auto_reviewed": True,
+            "ground_truth": tmpl["ground_truth"],
+            "reason_hint": tmpl["reason_hint"],
+            "stage": "stage2",
+        }
+        auto_review_eval.append(eval_entry)
+
+    all_rows = rows + auto_review_rows
+    all_eval = eval_entries + auto_review_eval
+
     write_header = not output_path.exists()
     with open(output_path, "a", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELD_NAMES)
         if write_header:
             writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(all_rows)
 
     with open(eval_path, "a") as f:
-        for entry in eval_entries:
+        for entry in all_eval:
             f.write(json.dumps(entry) + "\n")
 
-    print(f"Generated {len(rows)} stage-2 fraud transactions -> {output_path}")
-    print(f"Appended {len(eval_entries)} eval entries -> {eval_path}")
-    print(f"  Scenarios: {len(scenarios)}, Exact count: {len(rows)}")
+    print(f"Generated {len(all_rows)} stage-2 fraud transactions -> {output_path}")
+    print(f"  Scenarios: {len(rows)} (across {len(scenarios)} types)")
+    if auto_review_count:
+        print(f"  Auto-review targets: {auto_review_count}")
+    print(f"Appended {len(all_eval)} eval entries -> {eval_path}")
 
 
 def run():
@@ -191,6 +262,8 @@ def run():
     )
     parser.add_argument("--count", type=int, default=20,
                         help="Number of transactions (default: 20)")
+    parser.add_argument("--auto-review-count", type=int, default=0,
+                        help="Additional transactions guaranteed to be auto-reviewed target (default: 0)")
     parser.add_argument("--date", type=str, default=None,
                         help="Primary transaction date as YYYY-MM-DD (default: yesterday)")
     parser.add_argument("--output", type=str, default="work/upload.csv",
@@ -200,7 +273,8 @@ def run():
     if args.date is None:
         args.date = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d")
 
-    generate(args.count, args.date, Path(args.output))
+    generate(args.count, args.date, Path(args.output),
+             auto_review_count=args.auto_review_count)
 
 
 if __name__ == "__main__":

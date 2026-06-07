@@ -19,10 +19,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_constraint("uq_transaction_source_txn_id", "transaction", type_="unique")
-    op.create_unique_constraint("uq_transaction_upload_source", "transaction", ["upload_id", "source_txn_id"])
+    with op.batch_alter_table("transaction") as batch_op:
+        batch_op.drop_constraint("uq_transaction_source_txn_id", type_="unique")
+        batch_op.create_unique_constraint("uq_transaction_upload_source", ["upload_id", "source_txn_id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_transaction_upload_source", "transaction", type_="unique")
-    op.create_unique_constraint("uq_transaction_source_txn_id", "transaction", ["source_txn_id"])
+    with op.batch_alter_table("transaction") as batch_op:
+        batch_op.drop_constraint("uq_transaction_upload_source", type_="unique")
+        batch_op.create_unique_constraint("uq_transaction_source_txn_id", ["source_txn_id"])

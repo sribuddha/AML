@@ -19,8 +19,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_unique_constraint("uq_transaction_source_txn_id", "transaction", ["source_txn_id"])
+    conn = op.get_bind()
+    conn.execute(
+        sa.text("""
+            UPDATE "transaction"
+            SET source_txn_id = NULL
+            WHERE rowid NOT IN (
+                SELECT MIN(rowid) FROM "transaction" GROUP BY source_txn_id
+            )
+            AND source_txn_id IS NOT NULL
+        """)
+    )
+    with op.batch_alter_table("transaction") as batch_op:
+        batch_op.create_unique_constraint("uq_transaction_source_txn_id", ["source_txn_id"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_transaction_source_txn_id", "transaction", type_="unique")
+    with op.batch_alter_table("transaction") as batch_op:
+        batch_op.drop_constraint("uq_transaction_source_txn_id", type_="unique")

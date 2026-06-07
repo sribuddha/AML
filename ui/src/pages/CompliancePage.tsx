@@ -106,7 +106,10 @@ export default function CompliancePage() {
         {tab === "auto_reviewed" && (
           <AutoReviewedPanel
             uploadId={uploadId}
-            onSelectUpload={(id) => setSearchParams((prev) => { prev.set("upload_id", id); return prev })}
+            onSelectUpload={(id) => setSearchParams((prev) => {
+              if (id) { prev.set("upload_id", id) } else { prev.delete("upload_id") }
+              return prev
+            })}
           />
         )}
       </div>

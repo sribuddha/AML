@@ -35,7 +35,8 @@ async def _run_step(step: dict, date: str, output: Path):
 
     elif stype == "stage2":
         from scripts.generate_stage2_fraud_data import generate as fn
-        await fn(count, date, output)
+        auto_review_count = step.get("auto_review_count", 0)
+        await fn(count, date, output, auto_review_count=auto_review_count)
 
     elif stype == "synthetic":
         from scripts.test_generate_fraud_data import generate as fn

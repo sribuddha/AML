@@ -45,6 +45,7 @@ export default function TestPage() {
   });
   const [counts, setCounts] = useState({ ...INITIAL_COUNTS });
   const [badRows, setBadRows] = useState(0);
+  const [autoReviewCount, setAutoReviewCount] = useState(0);
   const [shuffle, setShuffle] = useState(true);
   const [date, setDate] = useState(todayStr());
   const [generating, setGenerating] = useState(false);
@@ -58,7 +59,7 @@ export default function TestPage() {
 
   const totalRows = ALL_TYPES
     .filter(t => enabled[t])
-    .reduce((sum, t) => sum + counts[t], 0);
+    .reduce((sum, t) => sum + counts[t] + (t === "stage2" ? autoReviewCount : 0), 0);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -74,6 +75,7 @@ export default function TestPage() {
           type: t,
           count: counts[t],
           bad_rate: t === "upload" ? badRows : 0,
+          auto_review_count: t === "stage2" ? autoReviewCount : 0,
         }));
       const res = await api.post<GenerateResponse>("/api/generate", {
         steps,
@@ -273,6 +275,14 @@ export default function TestPage() {
                     <span className="text-xs text-slate-400">bad rows</span>
                     <input type="number" min={0} max={100000} value={badRows}
                       onChange={e => setBadRows(Math.max(0, Number(e.target.value)))}
+                      className="w-20 px-2 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                  </>
+                )}
+                {t === "stage2" && (
+                  <>
+                    <span className="text-xs text-slate-400">auto-review</span>
+                    <input type="number" min={0} max={100000} value={autoReviewCount}
+                      onChange={e => setAutoReviewCount(Math.max(0, Number(e.target.value)))}
                       className="w-20 px-2 py-1 border border-slate-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500" />
                   </>
                 )}

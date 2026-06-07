@@ -6,11 +6,41 @@ All config is driven by environment variables, loaded from a `.env` file via `_e
 
 ### Quick Start
 
+> **Running mode:** Commands below run on your host. For Docker, prefix scripts with `docker exec aml-app` and use `localhost:80` for API calls. See [Production Deployment](#production-deployment) for Docker setup.
+
 ```bash
-# Copy the template and fill in your API keys
+# 1. Copy template and fill in your API keys
 cp .env.template .env
 # Edit .env — set at least AML_OPENAI_API_KEY or AML_GEMINI_API_KEY
+
+# 2. Check Langfuse infrastructure secrets (creates .env.backup snapshot)
+python scripts/check_secrets.py
+
+# 3. If any secrets show !! "still default", edit .env and change them,
+#    then re-run check_secrets.py to confirm.
+
+# 4. Start all services
+docker compose up -d
+
+# 5. Verify health
+curl http://localhost/api/health
+# → {"status":"ok","version":"0.1.0","db":"connected"}
 ```
+
+### Rotate Default Credentials
+
+Backing services (Langfuse stack) ship with known default passwords.
+Rotate them before any non-isolated deployment:
+
+```bash
+python scripts/check_secrets.py           # see which are still default
+# Edit .env to change the listed vars
+python scripts/check_secrets.py           # confirm all OK
+docker compose up -d                       # restart with new creds
+```
+
+The script creates `.env.backup` on first run and diffs against it
+on subsequent runs. Run anytime to audit.
 
 ### Reference
 
@@ -42,8 +72,9 @@ Values in `.env` take precedence over defaults but can still be overridden by sh
 ### Observability (Langfuse)
 
 ```bash
-# Start Langfuse + Postgres
-docker compose up -d
+# Langfuse runs as part of the Docker Compose stack (already included).
+# Start the full app stack, then configure:
+docker compose up -d --build
 
 # Open http://localhost:3000, create account, copy API keys
 # Add to .env:
@@ -51,7 +82,7 @@ docker compose up -d
 #   LANGFUSE_PUBLIC_KEY=pk-...
 #   LANGFUSE_SECRET_KEY=sk-...
 
-# Install optional dep
+# Install optional dep (host-side, for local dev only)
 pip install '.[observability]'
 
 # Run workflow as usual — traces appear at http://localhost:3000
@@ -64,12 +95,18 @@ pip install '.[observability]'
 | `LANGFUSE_PUBLIC_KEY` | `""` | Langfuse public API key |
 | `LANGFUSE_SECRET_KEY` | `""` | Langfuse secret API key |
 
+## Database Setup
 
 ```bash
 # Create all tables (first time or after schema changes)
 python -m scripts.init_db
 
+# Docker: migrations run automatically on container startup — no manual init_db needed.
 # Rebuild from scratch (required after breaking schema changes like UUID migration)
+docker compose down --volumes
+docker compose up -d --build
+
+# Or locally:
 Remove-Item data/aml.db -Force
 python -m scripts.init_db
 python -m scripts.seed_db
@@ -84,17 +121,21 @@ python -m scripts.seed_db
 #          High Risk Jurisdiction, Offshore Counterparty, Threshold Proximity, Round Amount)
 python -m scripts.seed_db
 
+# Docker: seed from inside the container
+docker exec aml-app python -m scripts.seed_db
+
 # Custom count
 python -m scripts.seed_db --customers 100
+docker exec aml-app python -m scripts.seed_db --customers 100
 
 # Preview without writing
 python -m scripts.seed_db --customers 100 --dry-run
+docker exec aml-app python -m scripts.seed_db --customers 100 --dry-run
 
 # Clear existing data and re-seed
 python -m scripts.seed_db --force
+docker exec aml-app python -m scripts.seed_db --force
 ```
-
-## Generate Sample CSV
 
 ## Workflow Modes
 
@@ -116,7 +157,12 @@ To switch, edit `DEFAULT_MODE` in `triggers.py` and restart the server.
 ```bash
 # Example: switch to stage3 for full pipeline
 # triggers.py → DEFAULT_MODE = "stage3"
+
+# Local
 uvicorn src.bff.app:app --reload
+
+# Docker
+docker compose restart app
 ```
 
 ## Build Upload Dataset
@@ -126,15 +172,21 @@ Generate a single CSV for upload with clean transactions, rule-triggering fraud,
 ```bash
 # 1. Create 1000 clean records + 50 intentionally bad rows (date defaults to yesterday)
 python -m scripts.generate_upload_data --count 1000 --bad-rate 50 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_upload_data --count 1000 --bad-rate 50 --output work/upload.csv
 
 # 2. Append 200 stage-1 fraud records (triggers deterministic rules, evenly distributed)
 python -m scripts.generate_stage1_fraud_data --count 200 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_stage1_fraud_data --count 200 --output work/upload.csv
 
 # 3. Shuffle so flagged rows aren't clustered at the end
 python -m scripts.data_scrambler work/upload.csv
+docker exec aml-app python -m scripts.data_scrambler work/upload.csv
 
 # 4. Upload the single file
+# Local: port 8000
 curl -X POST http://localhost:8000/api/uploads -F "file=@work/upload.csv"
+# Docker: port 80 via nginx
+curl -X POST http://localhost/api/uploads -F "file=@work/upload.csv"
 ```
 
 ### `generate_upload_data`
@@ -142,7 +194,9 @@ Creates random transactions for upload testing. Fetches real customers/accounts 
 
 ```bash
 python -m scripts.generate_upload_data --count 1000 --bad-rate 0 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_upload_data --count 1000 --bad-rate 0 --output work/upload.csv
 python -m scripts.generate_upload_data --count 500 --bad-rate 25 --date 2026-06-15 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_upload_data --count 500 --bad-rate 25 --date 2026-06-15 --output work/upload.csv
 ```
 
 ### `generate_stage1_fraud_data`
@@ -150,15 +204,23 @@ Reads all active deterministic rules from the DB and generates transactions guar
 
 ```bash
 python -m scripts.generate_stage1_fraud_data --count 300 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_stage1_fraud_data --count 300 --output work/upload.csv
 python -m scripts.generate_stage1_fraud_data --count 100 --date 2026-06-15 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_stage1_fraud_data --count 100 --date 2026-06-15 --output work/upload.csv
 ```
 
 ### `generate_stage2_fraud_data`
-Generates scenario-based transactions for LLM triage evaluation. Uses 9 hardcoded scenarios (both escalate and no-escalate). Distribution is exact. Appends to CSV and appends `.eval` entries. Each `.eval` entry includes a `"stage": "stage2"` field for per-stage metric grouping.
+Generates scenario-based transactions for LLM triage evaluation. Uses 12 hardcoded scenarios (9 escalation + 3 clearable). Distribution is exact. Appends to CSV and appends `.eval` entries. Each `.eval` entry includes a `"stage": "stage2"` field for per-stage metric grouping.
+
+The `--auto-review-count` flag adds extra transactions (with `AR_` prefix) using clearable templates — these trigger rules but are contextually benign, designed to produce `risk_level = "auto_reviewed"` when the LLM clears them. Their eval entries include `"expected_auto_reviewed": true`.
 
 ```bash
 python -m scripts.generate_stage2_fraud_data --count 20 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_stage2_fraud_data --count 20 --output work/upload.csv
 python -m scripts.generate_stage2_fraud_data --count 20 --date 2026-06-15 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_stage2_fraud_data --count 20 --date 2026-06-15 --output work/upload.csv
+python -m scripts.generate_stage2_fraud_data --count 20 --auto-review-count 5 --output work/upload.csv
+docker exec aml-app python -m scripts.generate_stage2_fraud_data --count 20 --auto-review-count 5 --output work/upload.csv
 ```
 
 ### `evaluate_stage2`
@@ -166,6 +228,7 @@ Compares LLM triage decisions against `.eval` expectations. Queries validation r
 
 ```bash
 python -m scripts.evaluate_stage2 --upload-id <UUID> --eval work/upload.eval
+docker exec aml-app python -m scripts.evaluate_stage2 --upload-id <UUID> --eval work/upload.eval
 ```
 
 ### `data_scrambler`
@@ -173,6 +236,7 @@ Shuffles all data rows in a CSV in-place (header preserved, rows randomized).
 
 ```bash
 python -m scripts.data_scrambler work/upload.csv
+docker exec aml-app python -m scripts.data_scrambler work/upload.csv
 ```
 
 ### Legacy test scripts (kept for backwards compat)
@@ -180,18 +244,24 @@ python -m scripts.data_scrambler work/upload.csv
 ```bash
 # Old generate_sample — renamed to test_generate_upload_data
 python -m scripts.test_generate_upload_data --count 1000 --bad-rate 0.05
+docker exec aml-app python -m scripts.test_generate_upload_data --count 1000 --bad-rate 0.05
 
 # Old generate_fraud_data — renamed to test_generate_fraud_data
 python -m scripts.test_generate_fraud_data --count 5000 --seed-rules
+docker exec aml-app python -m scripts.test_generate_fraud_data --count 5000 --seed-rules
 ```
 
 ## Run Server
 
 ```bash
+# Local development
 uvicorn src.bff.app:app --reload
+
+# Docker
+docker compose up -d --build
 ```
 
-Server runs on `http://127.0.0.1:8000`. Auto-runs pending Alembic migrations on startup.
+Server runs on `http://127.0.0.1:8000` (local) or `http://localhost` (Docker via nginx). Auto-runs pending Alembic migrations on startup.
 
 ## Production Deployment
 
@@ -200,21 +270,10 @@ The app can be deployed via Docker Compose with nginx as the entry point.
 ### Prerequisites
 
 - Docker + Docker Compose
-- `.env` file configured with API keys (copy from `.env.template`)
+- `.env` file configured with API keys and Langfuse infra credentials (copy from `.env.template`, then run `python scripts/check_secrets.py` to confirm default passwords are rotated)
 - LLM API keys for at least one provider (OpenAI or Gemini)
 
-### Quick Start
-
-```bash
-# Build images and start all services
-docker compose build
-docker compose up -d
-
-# Check health
-curl http://localhost/api/health
-
-# Open app at http://localhost
-```
+See [Quick Start](#quick-start) for the full initial setup flow.
 
 ### Services
 
@@ -378,12 +437,14 @@ All three scans should report zero findings on a clean project. Bandit skips tes
 ```bash
 # Retry a failed upload (creates new upload_id, deduplicates by source_txn_id + account_id)
 python -m scripts.retry_upload <upload_id>
+docker exec aml-app python -m scripts.retry_upload <upload_id>
 ```
 
 ## Visualize LangGraph
 
 ```bash
 python scripts/visualize_graph.py
+docker exec aml-app python scripts/visualize_graph.py
 ```
 
 Outputs `work/workflow.md` (Mermaid in Markdown) and `work/workflow.png` (image). The Markdown file renders directly on GitHub.
@@ -393,10 +454,13 @@ Outputs `work/workflow.md` (Mermaid in Markdown) and `work/workflow.png` (image)
 ```bash
 # Generate a fraud dataset + run full eval (requires seeded DB)
 python -m scripts.test_generate_fraud_data --count 2000 --seed-rules
+docker exec aml-app python -m scripts.test_generate_fraud_data --count 2000 --seed-rules
 python -m scripts.run_eval --csv work/fraud_dataset.csv
+docker exec aml-app python -m scripts.run_eval --csv work/fraud_dataset.csv
 
 # One-liner: generate + eval + seed rules
 python -m scripts.run_eval --generate --count 2000 --seed-rules
+docker exec aml-app python -m scripts.run_eval --generate --count 2000 --seed-rules
 ```
 
 The eval report is printed to console and saved as `work/fraud_dataset.eval.json`. The report includes `pattern_metrics` (per-fraud-pattern precision/recall/F1), `stage_metrics` (per-stage breakdown with rule_catch_rate, llm_clear_rate, llm_escalate_rate), and the `mode` the upload was processed in.
@@ -405,23 +469,28 @@ The eval report is printed to console and saved as `work/fraud_dataset.eval.json
 
 `generate_triage_dataset` generates a CSV with clean transactions + rule-triggering fraud on specific customers, uploads via the service layer (no server needed), and runs the full workflow with real LLM calls. Reports flagged/escalated counts, enrichment snapshots, SARs, and rule coverage.
 
-**Prerequisites:** Seeded DB (`python -m scripts.seed_db`), API key configured in `.env`.
+**Prerequisites:** Seeded DB (`python -m scripts.seed_db` or `docker exec aml-app python -m scripts.seed_db`), API key configured in `.env`.
 
 ```bash
 # Basic run: 300 txns (200 fraud + 100 clean), stage3 mode
 python -m scripts.generate_triage_dataset --count 300 --clean-count 100 --days 60
+docker exec aml-app python -m scripts.generate_triage_dataset --count 300 --clean-count 100 --days 60
 
 # Triage-only (no SAR generation): faster, still calls LLM for stage2+stage3
 python -m scripts.generate_triage_dataset --count 300 --clean-count 100 --triage-only
+docker exec aml-app python -m scripts.generate_triage_dataset --count 300 --clean-count 100 --triage-only
 
 # Custom customer focus
 python -m scripts.generate_triage_dataset --count 300 --customers CUST001,CUST002
+docker exec aml-app python -m scripts.generate_triage_dataset --count 300 --customers CUST001,CUST002
 
 # Different date window
 python -m scripts.generate_triage_dataset --count 300 --days 30
+docker exec aml-app python -m scripts.generate_triage_dataset --count 300 --days 30
 
 # Custom output paths
 python -m scripts.generate_triage_dataset --count 300 --output work/my_test.csv
+docker exec aml-app python -m scripts.generate_triage_dataset --count 300 --output work/my_test.csv
 ```
 
 ### Flags
@@ -448,6 +517,7 @@ Clean transactions are guaranteed safe: they use secure counterparties, safe amo
 ```bash
 # Delete an upload and all associated records (8 tables + staging + data dir)
 python -m scripts.delete_upload <upload_id>
+docker exec aml-app python -m scripts.delete_upload <upload_id>
 
 # Bulk-clean all orphaned upload directories (no DB record)
 # Runs as one-off; use with caution
@@ -509,7 +579,7 @@ API keys are stored in `.env` (gitignored). To rotate a key:
 
 1. **Generate a new key** via the provider's console (OpenAI, Google AI Studio, etc.)
 2. **Update `.env`** with the new key value
-3. **Restart the server** (`Ctrl+C` + `uvicorn src.bff.app:app --reload`)
+3. **Restart the server** (`Ctrl+C` + `uvicorn src.bff.app:app --reload`, or `docker compose restart app`)
 4. **If the old key was ever committed**, rotate it immediately at the provider and revoke the exposed key — the pre-commit hook prevents this but manual mistakes happen.
 5. **Optional:** Delete old key references from shell history (`Get-Content (Get-PSReadlineOption).HistorySavePath` on Windows, `history -c` on Linux).
 

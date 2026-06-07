@@ -130,80 +130,29 @@ Single FastAPI server that handles all backend concerns (file processing, rules 
 ### Detailed Flow (Implemented)
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                     BFF (FastAPI) — Upload Path                    │
-│                                                                   │
-│  CSV ──► POST /api/uploads ──► validate/split ──► SQLite         │
-│                                       │                           │
-│                              accepted  │  rejected                │
-│                                  │     │     │                    │
-│                            ┌─────▼─────▼─────┐                    │
-│                            │  Transaction    │  RejectedRecord    │
-│                            │  (accepted)     │  (rejected)        │
-│                            └─────────┬───────┘                    │
-│                                      │                            │
-│               asyncio.create_task(run_validation(upload_id))      │
-└──────────────────────────────────────┼────────────────────────────┘
-                                        │
-![Workflow graph](workflow_graph.png)
+CSV → POST /api/uploads → validate/split → SQLite (accepted → Transaction, rejected → RejectedRecord)
+                                           ↓
+                        asyncio.create_task(run_validation(upload_id))
+                                           ↓
+```
 
-┌──────────────────────────────────────▼────────────────────────────┐
-│              AML_Workflow (LangGraph StateGraph)                   │
-│                                                                    │
- │  ┌──────────────┐   ┌────────────────────┐                         │
- │  │  load_data   │──▶│  rule_engine_batch │──▶ persist results      │
- │  │              │   │                    │    + audit events       │
- │  │ Queries DB   │   │ Evaluates every    │         │              │
- │  │ • accepted   │   │ (txn × rule)       │         ▼              │
- │  │   txns       │   │ condition pair     │   ┌──────────────────┐ │
- │  │ • active     │   │ OR logic across    │   │  stage2_triage   │ │
- │  │   rules      │   │ conditions         │   │ (enrich + LLM)   │ │
- │  └──────────────┘   │ Updates txn.status │   │                  │ │
- │                     └────────────────────┘   │ Customer-level   │ │
- │                                              │ aggregations:    │ │
- │                                              │ • 30d stats      │ │
- │                                              │ • structuring    │ │
- │                                              │ • velocity z     │ │
- │                                              │ • dormancy       │ │
- │                                              │ • account prof.  │ │
- │                                              └────────┬─────────┘ │
- │                                                       │           │
- │                              │            flagged→clean            │
- │                              │            flagged→escalated        │
- │                              │                  │                  │
- │                              │                  ▼                  │
- │                              │            stage3_triage            │
- │                              │                  |                  │
- │                              │            escalated→clean          │
- │                              │            escalated→pending_review │
- │                              │                  |                  │
- │                              │                  ▼                  │
- │                              │              sar_node               │
- │                              │                  |                  │
- │                              │            create SAR row           │
- │                              │           upload→pending_human      │
- │                              │                  |                  │
- │                              │            human_review             │
- │                              │                  |                  │
- │                              │            [INTERRUPT]              │
- │                              │                  |                  │
- │                              │            (resume after            │
- │                              │             human PATCH)            │
- │                              │                  |                  │
- │                              │             finalize                │
- │                              │                  |                  │
- │                              │           upload→complete           │
- │                              └──────────────── END ────────────────┘
- │                                                                    │
- │  Clean path (no flags):                                            │
- │   rule_engine_batch → persist results → finalize → END            │
- │                                                                    │
- │  Flagged path (all modes):                                         │
- │   rule_engine_batch → persist results → stage2_triage → ...       │
- │                                                                    │
- │  Full path (stage3 deep-dive):                                     │
- │   ... → stage2_triage → stage3_triage → sar_node → …              │
-└──────────────────────────────────────────────────────────────────┘
+After upload, a LangGraph workflow processes the data:
+
+```mermaid
+graph TD
+  __start__ --> load_data
+  load_data -->|loads txns + rules| rule_engine_batch
+  rule_engine_batch -->|clean, no flags| finalize
+  rule_engine_batch -->|flagged| stage2_triage
+  stage2_triage -->|clear| finalize
+  stage2_triage -->|stage3 deep-dive| stage3_triage
+  stage2_triage -->|escalated| sar_node
+  stage3_triage -->|clear| finalize
+  stage3_triage -->|escalated| sar_node
+  sar_node --> human_review
+  human_review --> finalize
+  finalize --> __end__
+```
 
 | Mode | LLM Usage | Pipeline Depth |
 |------|-----------|----------------|

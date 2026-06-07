@@ -23,6 +23,5 @@ class Transaction(Base):
     country: Mapped[str | None] = mapped_column(String)
     date: Mapped[str | None] = mapped_column(String)
     source_txn_id: Mapped[str] = mapped_column(String, nullable=False)
-    status: Mapped[str] = mapped_column(String, nullable=False, server_default="loaded")
     created_at: Mapped[str | None] = mapped_column(String)
     updated_at: Mapped[str | None] = mapped_column(String)

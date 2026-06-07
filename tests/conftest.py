@@ -8,12 +8,12 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from alembic.command import stamp as alembic_stamp
+from alembic.command import upgrade as alembic_upgrade
 from alembic.config import Config as AlembicConfig
 from faker import Faker
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import event
+from sqlalchemy import event, inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import src.bff.database as db_mod
@@ -31,6 +31,12 @@ from src.core.models.enrichment_snapshot import EnrichmentSnapshot
 logging.getLogger("alembic").setLevel(logging.WARNING)
 
 fake = Faker()
+
+
+async def _existing_table_names(engine) -> set[str]:
+    async with engine.connect() as conn:
+        tables = await conn.run_sync(lambda sync_conn: sa_inspect(sync_conn).get_table_names())
+        return set(tables)
 
 _test_uploads: set[str] = set()
 _upload_files_snapshot: set[str] = set()
@@ -60,16 +66,13 @@ async def engine():
 
     engine = create_async_engine(url, echo=False)
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    # Stamp Alembic so app lifespan's `alembic upgrade head` is a no-op
+    # Build schema by running actual migrations — matches production
     _alembic_cfg = AlembicConfig(str(Path("src/bff/alembic.ini").resolve()))
     _alembic_cfg.set_main_option(
         "script_location",
         str(Path("src/bff/migrations").resolve()),
     )
-    alembic_stamp(_alembic_cfg, "head")
+    alembic_upgrade(_alembic_cfg, "head")
 
     yield engine
 
@@ -87,7 +90,10 @@ async def engine():
 async def session(engine):
     async with async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)() as s:
         yield s
+        db_tables = await _existing_table_names(engine)
         for table in reversed(Base.metadata.sorted_tables):
+            if table.name not in db_tables:
+                continue
             await s.execute(table.delete())
         await s.commit()
 
@@ -95,10 +101,13 @@ async def session(engine):
 @pytest_asyncio.fixture
 async def seeded_session(engine):
     maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    db_tables = await _existing_table_names(engine)
 
     # Phase 1: cleanup-before + seed on a dedicated session
     async with maker() as s:
         for table in reversed(Base.metadata.sorted_tables):
+            if table.name not in db_tables:
+                continue
             await s.execute(table.delete())
         await s.commit()
 
@@ -143,6 +152,8 @@ async def seeded_session(engine):
     # from the test session's potentially dirty/pending objects.
     async with maker() as cleaner:
         for table in reversed(Base.metadata.sorted_tables):
+            if table.name not in db_tables:
+                continue
             await cleaner.execute(table.delete())
         await cleaner.commit()
 

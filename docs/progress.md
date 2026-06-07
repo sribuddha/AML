@@ -41,7 +41,7 @@
 | | `run_eval` — full eval pipeline (generate → upload → evaluate → report) | ✅ Done |
 | | `generate_upload_data` — production upload CSV with --bad-rate count and --date | ✅ Done |
 | | `generate_stage1_fraud_data` — rule-triggering transactions from DB rules + `.eval` output | ✅ Done |
-| | `generate_stage2_fraud_data` — scenario-based LLM triage eval transactions (9 hardcoded scenarios, `.eval` output) | ✅ Done |
+| | `generate_stage2_fraud_data` — scenario-based LLM triage eval transactions (12 scenarios: 9 escalation + 3 clearable, `.eval` output, `--auto-review-count` flag) | ✅ Done |
 | | `evaluate_stage2` — compare LLM triage decisions against `.eval` expectations | ✅ Done |
 | | `data_scrambler` — shuffle CSV rows in-place | ✅ Done |
 | **Testing** | Unit tests (service.py — 23 tests) | ✅ Done |
@@ -82,7 +82,7 @@
 | Prompts | Stored as standalone `.txt` files in `src/aml_workflow/prompts/`, loaded at import by `loader.py`. Auditable by non-developers, versionable independently. |
 | LLM system message | OpenAI: `messages[{"role": "system"}]`. Gemini: `system_instruction` in config dict (not top-level kwarg). Both use `str.format()` for templating (zero new dependencies). |
 | `.eval` format | JSONL — one JSON object per line, keyed by `source_txn_id`. Stage1 overwrites, stage2 appends. Each entry includes `stage` (clean/stage1/stage2/unknown) for per-stage metric grouping. |
-| Stage2 scenarios | Hardcoded in `scripts/generate_stage2_fraud_data.py` (not read from DB). Covers both escalate and no-escalate cases to test LLM judgment. Scenario names use `STAGE2_` prefix for consistency. |
+| Stage2 scenarios | Hardcoded in `scripts/generate_stage2_fraud_data.py` (not read from DB). Covers both escalate and no-escalate cases to test LLM judgment. Includes 3 clearable templates (threshold proximity / round amount / negative amount) exposed via `--auto-review-count` flag. Scenario names use `CLEARABLE_` prefix for clearable, `STAGE2_` for escalation. |
 | Stage inference | `stage` field in `.eval` entries takes priority; fallback to scenario prefix (`STAGE1_`, `STAGE2_`) or `source_txn_id` prefix (`ST1_`, `ST2_`). Missing stage → `unknown`. |
 | Mode awareness | `uploaded_files.mode` column persists the workflow mode (`full`/`stage1`/`stage2`/`stage3`) at processing time. Eval response includes `mode` field. LLM triage metrics (`risk_level`) are meaningful primarily in `full`/`stage2`/`stage3` modes — in `stage1` mode all flagged rows are bypassed to `high` without LLM triage. |
 | `AsyncSqliteSaver` | Replaces `SqliteSaver` for v3.1.0 compatibility (async context manager required for async graphs). |

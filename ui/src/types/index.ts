@@ -116,6 +116,7 @@ export interface GenerateStep {
   type: "upload" | "stage1" | "stage2" | "synthetic";
   count: number;
   bad_rate: number;
+  auto_review_count?: number;
 }
 
 export interface GenerateRequest {
@@ -139,6 +140,7 @@ export interface EvalEntry {
   source_txn_id: string;
   scenario: string;
   expected_escalate: boolean;
+  expected_auto_reviewed?: boolean;
   ground_truth: string;
   reason_hint: string;
 }

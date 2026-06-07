@@ -4,7 +4,6 @@ import shutil
 
 from sqlalchemy import delete, select
 
-from src.aml_workflow.models.audit_log import AuditLog
 from src.core.models.enrichment_snapshot import EnrichmentSnapshot
 from src.core.models.sar import SAR
 from src.core.models.validation_result import ValidationResult
@@ -41,14 +40,6 @@ async def delete_upload(upload_id: str):
             delete(SAR).where(SAR.upload_id == upload_id).returning(SAR.id)
         )
         sar_count = len(result_sar.fetchall())
-
-        # AuditLog has nullable FK to uploaded_files
-        result_al = await session.execute(
-            delete(AuditLog)
-            .where(AuditLog.upload_id == upload_id)
-            .returning(AuditLog.id)
-        )
-        al_count = len(result_al.fetchall())
 
         # EnrichmentSnapshot references uploaded_files only
         result_es = await session.execute(
@@ -103,7 +94,6 @@ async def delete_upload(upload_id: str):
         print(f"Deleted upload {upload_id} ({upload.filename}):")
         print(f"  Validation results removed: {vr_count}")
         print(f"  SARs removed:               {sar_count}")
-        print(f"  Audit log entries removed:  {al_count}")
         print(f"  Enrichment snapshots removed:{es_count}")
         print(f"  Transactions removed:       {tx_count}")
         print(f"  Rejected records removed:   {rj_count}")
